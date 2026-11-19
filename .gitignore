@@ -1,0 +1,13 @@
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vs/
+__pycache__/
+*.py[cod]
+*.sln
+*.suo
+*.uasset
+*.umap
+.env
+.env.*

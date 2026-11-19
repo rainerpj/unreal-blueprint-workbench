@@ -1,0 +1,11 @@
+{
+  "FileVersion": 3,
+  "Version": 3,
+  "VersionName": "0.3",
+  "FriendlyName": "Blueprint Workbench",
+  "Description": "Blueprint and Widget graph inspection, copy editing, and explicit backed-up commandlet writeback.",
+  "Category": "Editor",
+  "EnabledByDefault": true,
+  "CanContainContent": false,
+  "Modules": [{ "Name": "BlueprintWorkbench", "Type": "Editor", "LoadingPhase": "Default" }]
+}

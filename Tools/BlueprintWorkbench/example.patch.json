@@ -1,0 +1,9 @@
+{
+  "operations": [
+    {"op": "add_variable", "name": "WorkbenchFlag", "type": "bool"},
+    {"op": "add_node", "graph": "EventGraph", "kind": "custom_event", "id": "start", "name": "WorkbenchExample", "x": 0, "y": 1200},
+    {"op": "add_node", "graph": "EventGraph", "kind": "set", "id": "set_flag", "variable": "WorkbenchFlag", "x": 300, "y": 1200},
+    {"op": "set_default", "graph": "EventGraph", "node": "set_flag", "pin": "WorkbenchFlag", "value": "true"},
+    {"op": "connect", "graph": "EventGraph", "from": {"node": "start", "pin": "then"}, "to": {"node": "set_flag", "pin": "execute"}}
+  ]
+}
