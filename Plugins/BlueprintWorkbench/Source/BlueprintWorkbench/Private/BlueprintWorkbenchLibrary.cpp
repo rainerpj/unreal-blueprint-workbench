@@ -16,6 +16,19 @@
 #include "K2Node_VariableSet.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_Knot.h"
+#include "K2Node_FunctionEntry.h"
+#include "K2Node_FunctionResult.h"
+#include "K2Node_MakeStruct.h"
+#include "K2Node_Self.h"
+#include "K2Node_CreateDelegate.h"
+#include "K2Node_AddDelegate.h"
+#include "K2Node_RemoveDelegate.h"
+#include "K2Node_CallArrayFunction.h"
+#include "K2Node_MacroInstance.h"
+#include "K2Node_ComponentBoundEvent.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
+#include "Components/SceneComponent.h"
 #include "EdGraphNode_Comment.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -27,6 +40,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "UObject/Package.h"
+#include "UObject/MetaData.h"
 #include "UObject/SavePackage.h"
 #include "UObject/StrongObjectPtr.h"
 #include "UObject/UnrealType.h"
@@ -83,6 +97,26 @@ static FObject PinType(const FEdGraphPinType& Type)
     FEdGraphPinType::StaticStruct()->ExportText(Export, &Type, nullptr, nullptr, PPF_None, nullptr);
     Out->SetStringField(TEXT("unreal_text"), Export);
     return Out;
+}
+
+// UE 5.5 returns UMetaData*, UE 5.7 returns FMetaData&. Preserve native comment
+// classes; older engines store the missing Details field as per-object package metadata.
+template<typename T> static T& Metadata(T* Value) { return *Value; }
+template<typename T> static T& Metadata(T& Value) { return Value; }
+
+static FString CommentDetails(UEdGraphNode_Comment* Comment)
+{
+    if (FTextProperty* Property = FindFProperty<FTextProperty>(Comment->GetClass(), TEXT("NodeDetails")))
+        return Property->GetPropertyValue_InContainer(Comment).ToString();
+    return Metadata(Comment->GetOutermost()->GetMetaData()).GetValue(Comment, TEXT("BlueprintWorkbench.CommentDetails"));
+}
+
+static void SetCommentDetails(UEdGraphNode_Comment* Comment, const FString& Details)
+{
+    if (FTextProperty* Property = FindFProperty<FTextProperty>(Comment->GetClass(), TEXT("NodeDetails")))
+        Property->SetPropertyValue_InContainer(Comment, FText::FromString(Details));
+    else
+        Metadata(Comment->GetOutermost()->GetMetaData()).SetValue(Comment, TEXT("BlueprintWorkbench.CommentDetails"), *Details);
 }
 
 static FObject Describe(UBlueprint* Blueprint)
@@ -154,7 +188,7 @@ static FObject Describe(UBlueprint* Blueprint)
             if (UK2Node_CallFunction* Call = Cast<UK2Node_CallFunction>(Node))
                 NodeItem->SetBoolField(TEXT("latent"), !Call->GetTargetFunction() || Call->GetTargetFunction()->HasMetaData(TEXT("Latent")));
             if (UEdGraphNode_Comment* Comment = Cast<UEdGraphNode_Comment>(Node))
-                NodeItem->SetStringField(TEXT("details"), Comment->NodeDetails.ToString());
+                NodeItem->SetStringField(TEXT("details"), CommentDetails(Comment));
             FValues Pins;
             for (UEdGraphPin* Pin : Node->Pins)
             {
@@ -222,6 +256,9 @@ struct FPatch
     UEdGraphNode* ResolveNode(UEdGraph* InGraph, const FString& NodeId)
     {
         UEdGraphNode* Found = Aliases.FindRef(NodeId);
+        if (NodeId == TEXT("$entry") || NodeId == TEXT("$return"))
+            for (UEdGraphNode* N : InGraph->Nodes)
+                if ((NodeId == TEXT("$entry") && Cast<UK2Node_FunctionEntry>(N)) || (NodeId == TEXT("$return") && Cast<UK2Node_FunctionResult>(N))) { Found = N; break; }
         if (!Found)
         {
             FGuid Guid;
@@ -299,10 +336,21 @@ struct FPatch
             if (!PinType.PinSubCategoryObject.IsValid()) return Reject(TEXT("Object class not found"));
         }
         else return Reject(TEXT("Unsupported variable type: ") + Type);
+        const FString Container = String(Op, TEXT("container"));
+        if (!Container.IsEmpty() && Container != TEXT("map")) return Reject(TEXT("Unsupported container: ") + Container);
+        if (String(Op, TEXT("container")) == TEXT("map"))
+        {
+            PinType.ContainerType = EPinContainerType::Map;
+            PinType.PinValueType.TerminalCategory = UEdGraphSchema_K2::PC_Struct;
+            PinType.PinValueType.TerminalSubCategoryObject = LoadObject<UScriptStruct>(nullptr, *String(Op, TEXT("value_object")));
+            if (!PinType.PinValueType.TerminalSubCategoryObject.IsValid()) return Reject(TEXT("Map value struct not found"));
+        }
         // Defaults are edited through typed input pins; member variables use their normal zero defaults.
         if (Op->HasField(TEXT("default"))) return Reject(TEXT("Member defaults are not supported; use set_default on a setter input"));
-        return FBlueprintEditorUtils::AddMemberVariable(Blueprint, FName(*Name), PinType)
-            || Reject(TEXT("AddMemberVariable failed"));
+        if (!FBlueprintEditorUtils::AddMemberVariable(Blueprint, FName(*Name), PinType)) return Reject(TEXT("AddMemberVariable failed"));
+        if (Op->HasField(TEXT("editable")) && Op->GetBoolField(TEXT("editable")))
+            FBlueprintEditorUtils::SetBlueprintOnlyEditableFlag(Blueprint, FName(*Name), false);
+        return true;
     }
 
     bool Override(const FObject& Op)
@@ -320,7 +368,7 @@ struct FPatch
                 if (UK2Node_Event* Event = Cast<UK2Node_Event>(Node))
                     if (Event->EventReference.GetMemberName() == Function->GetFName()) return Reject(TEXT("Override event already exists"));
         }
-        // Functions with outputs (e.g. PrepareLegacyRound) get a function graph and return node.
+        // Functions with outputs get a function graph and return node.
         if (UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(Function))
         {
             UEdGraph* TargetGraph = Graph(String(Op, TEXT("graph")));
@@ -350,6 +398,71 @@ struct FPatch
         return Node;
     }
 
+    bool Signature(const FObject& Op)
+    {
+        const FString Name = String(Op, TEXT("name"));
+        UEdGraph* Target = nullptr;
+        for (UEdGraph* G : Blueprint->FunctionGraphs) if (G->GetName() == Name) Target = G;
+        if (!Target)
+        {
+            if (!NewName(Name)) return false;
+            Target = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(*Name), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+            FBlueprintEditorUtils::AddFunctionGraph<UClass>(Blueprint, Target, true, nullptr);
+        }
+        UK2Node_FunctionEntry* Entry = nullptr;
+        for (UEdGraphNode* N : Target->Nodes) if (auto* E = Cast<UK2Node_FunctionEntry>(N)) Entry = E;
+        if (!Entry) return Reject(TEXT("Missing function entry"));
+        const FValues* Parameters = nullptr;
+        if (Op->TryGetArrayField(TEXT("parameters"), Parameters)) for (const auto& V : *Parameters)
+        {
+            FObject P = V->AsObject();
+            FEdGraphPinType Type;
+            FString Kind = String(P, TEXT("type"));
+            if (Kind == TEXT("object")) { Type.PinCategory = UEdGraphSchema_K2::PC_Object; Type.PinSubCategoryObject = LoadObject<UClass>(nullptr, *String(P, TEXT("object"))); }
+            else if (Kind == TEXT("struct")) { Type.PinCategory = UEdGraphSchema_K2::PC_Struct; Type.PinSubCategoryObject = LoadObject<UScriptStruct>(nullptr, *String(P, TEXT("object"))); }
+            else if (Kind == TEXT("bool")) Type.PinCategory = UEdGraphSchema_K2::PC_Boolean;
+            else if (Kind == TEXT("float")) { Type.PinCategory = UEdGraphSchema_K2::PC_Real; Type.PinSubCategory = UEdGraphSchema_K2::PC_Float; }
+            else return Reject(TEXT("Unsupported signature type"));
+            if ((Kind == TEXT("object") || Kind == TEXT("struct")) && !Type.PinSubCategoryObject.IsValid()) return Reject(TEXT("Signature type not found"));
+            FName PinName(*String(P, TEXT("name")));
+            FString Direction = String(P, TEXT("direction"));
+            if (Direction == TEXT("local"))
+            {
+                if (!FBlueprintEditorUtils::AddLocalVariable(Blueprint, Target, PinName, Type)) return Reject(TEXT("Could not add local"));
+            }
+            else if (Direction == TEXT("input"))
+            {
+                if (Entry->FindPin(PinName)) return Reject(TEXT("Input already exists"));
+                Entry->CreateUserDefinedPin(PinName, Type, EGPD_Output);
+            }
+            else if (Direction == TEXT("output"))
+            {
+                TArray<UK2Node_FunctionResult*> Results;
+                for (UEdGraphNode* N : Target->Nodes) if (auto* R = Cast<UK2Node_FunctionResult>(N)) Results.Add(R);
+                if (Results.IsEmpty()) Results.Add(CastChecked<UK2Node_FunctionResult>(Create<UK2Node_FunctionResult>(Target, [](auto*) {})));
+                for (auto* R : Results) { if (R->FindPin(PinName)) return Reject(TEXT("Output already exists")); R->CreateUserDefinedPin(PinName, Type, EGPD_Input); }
+            }
+            else return Reject(TEXT("Invalid parameter direction"));
+        }
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+        return true;
+    }
+
+    bool Component(const FObject& Op)
+    {
+        UClass* Class = LoadObject<UClass>(nullptr, *String(Op, TEXT("class")));
+        FName Name(*String(Op, TEXT("name")));
+        if (!Class || !Class->IsChildOf(UActorComponent::StaticClass()) || !Blueprint->SimpleConstructionScript) return Reject(TEXT("Invalid component class/Blueprint"));
+        for (USCS_Node* N : Blueprint->SimpleConstructionScript->GetAllNodes()) if (N->GetVariableName() == Name) return Reject(TEXT("Component exists"));
+        USCS_Node* Node = Blueprint->SimpleConstructionScript->CreateNode(Class, Name);
+        USCS_Node* Root = nullptr;
+        for (USCS_Node* N : Blueprint->SimpleConstructionScript->GetRootNodes()) if (N->ComponentClass->IsChildOf(USceneComponent::StaticClass())) { Root = N; break; }
+        if (Root && Class->IsChildOf(USceneComponent::StaticClass())) Root->AddChildNode(Node);
+        else Blueprint->SimpleConstructionScript->AddNode(Node);
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+        return true;
+    }
+
     bool Node(const FObject& Op, UEdGraph* TargetGraph)
     {
         const FString Id = String(Op, TEXT("id"));
@@ -358,6 +471,54 @@ struct FPatch
         const FString Kind = String(Op, TEXT("kind"));
         UEdGraphNode* Added = nullptr;
         if (Kind == TEXT("branch")) Added = Create<UK2Node_IfThenElse>(TargetGraph, [](auto*) {});
+        else if (Kind == TEXT("return"))
+        {
+            UK2Node_FunctionResult* Original = nullptr;
+            for (UEdGraphNode* N : TargetGraph->Nodes) if (auto* R = Cast<UK2Node_FunctionResult>(N)) { Original = R; break; }
+            if (!Original) return Reject(TEXT("Function has no return signature"));
+            Added = DuplicateObject<UK2Node_FunctionResult>(Original, TargetGraph);
+            Added->CreateNewGuid();
+            for (auto* P : Added->Pins) P->LinkedTo.Empty();
+            TargetGraph->AddNode(Added, false, false);
+        }
+        else if (Kind == TEXT("self")) Added = Create<UK2Node_Self>(TargetGraph, [](auto*) {});
+        else if (Kind == TEXT("cast"))
+        {
+            UClass* Class = LoadObject<UClass>(nullptr, *String(Op, TEXT("owner")));
+            if (!Class) return Reject(TEXT("Cast class missing"));
+            Added = Create<UK2Node_DynamicCast>(TargetGraph, [Class](auto* N) { N->TargetType = Class; });
+        }
+        else if (Kind == TEXT("make_struct"))
+        {
+            UScriptStruct* Struct = LoadObject<UScriptStruct>(nullptr, *String(Op, TEXT("struct")));
+            if (!Struct) return Reject(TEXT("Struct missing"));
+            Added = Create<UK2Node_MakeStruct>(TargetGraph, [Struct](auto* N) { N->StructType = Struct; });
+        }
+        else if (Kind == TEXT("delegate"))
+            Added = Create<UK2Node_CreateDelegate>(TargetGraph, [&Op](auto* N) { N->SetFunction(FName(*String(Op, TEXT("function")))); });
+        else if (Kind == TEXT("bind") || Kind == TEXT("unbind"))
+        {
+            UClass* Owner = LoadObject<UClass>(nullptr, *String(Op, TEXT("owner")));
+            FName Name(*String(Op, TEXT("name")));
+            if (!Owner || !FindFProperty<FMulticastDelegateProperty>(Owner, Name)) return Reject(TEXT("Delegate property missing"));
+            auto Configure = [Owner,Name](auto* N) { N->SetFromProperty(FindFProperty<FMulticastDelegateProperty>(Owner, Name), false, Owner); };
+            Added = Kind == TEXT("bind") ? Create<UK2Node_AddDelegate>(TargetGraph, Configure) : Create<UK2Node_RemoveDelegate>(TargetGraph, Configure);
+        }
+        else if (Kind == TEXT("component_event"))
+        {
+            auto* Property = FindFProperty<FObjectProperty>(Blueprint->SkeletonGeneratedClass, FName(*String(Op,TEXT("variable"))));
+            auto* Delegate = Property ? FindFProperty<FMulticastDelegateProperty>(Property->PropertyClass,FName(*String(Op,TEXT("name")))) : nullptr;
+            if (!Property || !Delegate) return Reject(TEXT("Component event property missing"));
+            Added = Create<UK2Node_ComponentBoundEvent>(TargetGraph, [Property,Delegate](auto* N) { N->InitializeComponentBoundEventParams(Property,Delegate); });
+        }
+        else if (Kind == TEXT("foreach"))
+        {
+            auto* MacroBP = LoadObject<UBlueprint>(nullptr,TEXT("/Engine/EditorBlueprintResources/StandardMacros.StandardMacros"));
+            UEdGraph* Macro = nullptr;
+            if (MacroBP) for (UEdGraph* G : MacroBP->MacroGraphs) if (G->GetName() == TEXT("ForEachLoop")) Macro = G;
+            if (!Macro) return Reject(TEXT("ForEach macro missing"));
+            Added = Create<UK2Node_MacroInstance>(TargetGraph, [Macro](auto* N) { N->SetMacroGraph(Macro); });
+        }
         else if (Kind == TEXT("comment"))
         {
             double Width = 0, Height = 0;
@@ -367,7 +528,7 @@ struct FPatch
             if (String(Op, TEXT("text")).IsEmpty()) return Reject(TEXT("Comment text is required"));
             UEdGraphNode_Comment* Comment = CastChecked<UEdGraphNode_Comment>(Create<UEdGraphNode_Comment>(TargetGraph, [](auto*) {}));
             Comment->NodeComment = String(Op, TEXT("text"));
-            Comment->NodeDetails = FText::FromString(String(Op, TEXT("details")));
+            SetCommentDetails(Comment, String(Op, TEXT("details")));
             Comment->NodeWidth = Width;
             Comment->NodeHeight = Height;
             Comment->FontSize = 20;
@@ -396,18 +557,19 @@ struct FPatch
         }
         else if (Kind == TEXT("enum_to_string"))
             Added = Create<UK2Node_GetEnumeratorNameAsString>(TargetGraph, [](auto*) {});
-        else if (Kind == TEXT("call"))
+        else if (Kind == TEXT("call") || Kind == TEXT("container_call"))
         {
             const FString OwnerPath = String(Op, TEXT("owner"));
             UClass* Owner = OwnerPath.IsEmpty() ? Blueprint->SkeletonGeneratedClass.Get() : LoadObject<UClass>(nullptr, *OwnerPath);
             UFunction* Function = Owner ? Owner->FindFunctionByName(FName(*String(Op, TEXT("function")))) : nullptr;
             if (!Function || !Function->HasAnyFunctionFlags(FUNC_BlueprintCallable | FUNC_BlueprintPure))
                 return Reject(TEXT("Blueprint callable function not found"));
-            if (Function->HasMetaData(TEXT("BlueprintInternalUseOnly")) || Function->HasMetaData(TEXT("CustomStructureParam")) || Function->HasMetaData(TEXT("ArrayParm")))
+            if (Kind != TEXT("container_call") && (Function->HasMetaData(TEXT("BlueprintInternalUseOnly")) || Function->HasMetaData(TEXT("CustomStructureParam")) || Function->HasMetaData(TEXT("ArrayParm"))))
                 return Reject(TEXT("This function needs a specialized node; generic calls are not supported"));
             if (Function->HasMetaData(TEXT("Latent")) && !Blueprint->UbergraphPages.Contains(TargetGraph))
                 return Reject(TEXT("Latent call requires an event graph"));
-            Added = Create<UK2Node_CallFunction>(TargetGraph, [Function](auto* NewNode) { NewNode->SetFromFunction(Function); });
+            if (Function->HasMetaData(TEXT("ArrayParm"))) Added = Create<UK2Node_CallArrayFunction>(TargetGraph, [Function](auto* N) { N->SetFromFunction(Function); });
+            else Added = Create<UK2Node_CallFunction>(TargetGraph, [Function](auto* NewNode) { NewNode->SetFromFunction(Function); });
         }
         else if (Kind == TEXT("get") || Kind == TEXT("set"))
         {
@@ -423,6 +585,12 @@ struct FPatch
                 else NewNode->VariableReference.SetExternalMember(Name, Owner);
             };
             Added = Kind == TEXT("get") ? Create<UK2Node_VariableGet>(TargetGraph, Configure) : Create<UK2Node_VariableSet>(TargetGraph, Configure);
+        }
+        else if (Kind == TEXT("local_get") || Kind == TEXT("local_set"))
+        {
+            FName Name(*String(Op,TEXT("variable")));
+            auto Configure = [Name,TargetGraph](auto* N) { N->VariableReference.SetLocalMember(Name, TargetGraph->GetName(), FGuid()); };
+            Added = Kind == TEXT("local_get") ? Create<UK2Node_VariableGet>(TargetGraph, Configure) : Create<UK2Node_VariableSet>(TargetGraph, Configure);
         }
         else if (Kind == TEXT("custom_event"))
         {
@@ -446,7 +614,10 @@ struct FPatch
         const FString Kind = String(Op, TEXT("op"));
         // Catch misspelled/unsupported fields rather than silently applying a different patch.
         TArray<FString> Fields;
-        if (Kind == TEXT("add_variable")) Fields = {TEXT("op"), TEXT("name"), TEXT("type"), TEXT("object")};
+        if (Kind == TEXT("signature")) Fields = {TEXT("op"), TEXT("name"), TEXT("parameters")};
+        else if (Kind == TEXT("add_component")) Fields = {TEXT("op"), TEXT("name"), TEXT("class")};
+        else if (Kind == TEXT("refresh_calls")) Fields = {TEXT("op"), TEXT("functions")};
+        else if (Kind == TEXT("add_variable")) Fields = {TEXT("op"), TEXT("name"), TEXT("type"), TEXT("object"), TEXT("container"), TEXT("value_object"), TEXT("editable")};
         else if (Kind == TEXT("add_override")) Fields = {TEXT("op"), TEXT("name"), TEXT("graph")};
         else if (Kind == TEXT("add_node")) Fields = {TEXT("op"), TEXT("graph"), TEXT("kind"), TEXT("id"), TEXT("x"), TEXT("y"), TEXT("owner"), TEXT("function"), TEXT("variable"), TEXT("name"), TEXT("struct"), TEXT("text"), TEXT("details"), TEXT("width"), TEXT("height"), TEXT("members")};
         else if (Kind == TEXT("move_node")) Fields = {TEXT("op"), TEXT("graph"), TEXT("node"), TEXT("x"), TEXT("y")};
@@ -456,6 +627,28 @@ struct FPatch
         else return Reject(TEXT("Unsupported operation: ") + Kind);
         for (const auto& Field : Op->Values)
             if (!Fields.Contains(Field.Key)) return Reject(TEXT("Unsupported field: ") + Field.Key);
+        if (Kind == TEXT("signature")) return Signature(Op);
+        if (Kind == TEXT("add_component")) return Component(Op);
+        if (Kind == TEXT("refresh_calls"))
+        {
+            const FValues* Functions = nullptr;
+            if (!Op->TryGetArrayField(TEXT("functions"), Functions) || Functions->IsEmpty())
+                return Reject(TEXT("Explicit nonempty function list required"));
+            TSet<FName> Names;
+            for (const auto& Value : *Functions)
+            {
+                FString Name;
+                if (!Value->TryGetString(Name) || Name.IsEmpty()) return Reject(TEXT("Function name must be a nonempty string"));
+                Names.Add(FName(*Name));
+            }
+            TArray<UEdGraph*> Graphs;
+            Blueprint->GetAllGraphs(Graphs);
+            for (UEdGraph* G : Graphs)
+                for (UEdGraphNode* N : G->Nodes)
+                    if (auto* Call = Cast<UK2Node_CallFunction>(N))
+                        if (Names.Contains(Call->FunctionReference.GetMemberName())) Call->ReconstructNode();
+            return true;
+        }
         if (Kind == TEXT("add_variable")) return Variable(Op);
         if (Kind == TEXT("add_override")) return Override(Op);
         UEdGraph* TargetGraph = Graph(String(Op, TEXT("graph")));
@@ -637,7 +830,13 @@ static FString ApplyPatchInternal(const FString& AssetPath, const FString& Patch
         UEdGraphNode* SourceNode = Cast<UEdGraphNode>(Pair.Key);
         UEdGraphNode* CopyNode = Cast<UEdGraphNode>(Pair.Value);
         if (SourceNode && CopyNode && SourceNode->IsIn(Source) && CopyNode->IsIn(Copy))
+        {
             Context.SourceNodes.Add(SourceNode->GetGraph()->GetPathName(Source) + TEXT("|") + SourceNode->NodeGuid.ToString(), CopyNode);
+            // Package metadata is not part of StaticDuplicateObjectEx's object property copy.
+            if (auto* SourceComment = Cast<UEdGraphNode_Comment>(SourceNode))
+                if (!FindFProperty<FTextProperty>(SourceComment->GetClass(), TEXT("NodeDetails")))
+                    SetCommentDetails(CastChecked<UEdGraphNode_Comment>(CopyNode), CommentDetails(SourceComment));
+        }
     }
     bool bPatched = true;
     for (int32 Index = 0; Index < Operations->Num(); ++Index)

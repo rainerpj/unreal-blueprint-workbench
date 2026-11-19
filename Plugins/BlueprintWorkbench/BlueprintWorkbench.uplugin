@@ -1,11 +1,27 @@
 {
   "FileVersion": 3,
-  "Version": 3,
-  "VersionName": "0.3",
+  "Version": 4,
+  "VersionName": "0.4.0",
   "FriendlyName": "Blueprint Workbench",
-  "Description": "Blueprint and Widget graph inspection, copy editing, and explicit backed-up commandlet writeback.",
+  "Description": "Project-independent editor graph inspection, safe patching and verified writeback.",
   "Category": "Editor",
   "EnabledByDefault": true,
   "CanContainContent": false,
-  "Modules": [{ "Name": "BlueprintWorkbench", "Type": "Editor", "LoadingPhase": "Default" }]
+  "Modules": [
+    {
+      "Name": "BlueprintWorkbench",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "PythonScriptPlugin",
+      "Enabled": true
+    },
+    {
+      "Name": "EditorScriptingUtilities",
+      "Enabled": true
+    }
+  ]
 }

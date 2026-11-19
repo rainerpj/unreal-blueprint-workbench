@@ -19,6 +19,11 @@ factory.set_editor_property("parent_class", unreal.Actor)
 source = unreal.AssetToolsHelpers.get_asset_tools().create_asset("BP_Source", package_dir, unreal.Blueprint, factory)
 assert source, "Source fixture creation failed"
 source_path = source.get_path_name()
+seed = json.loads(lib.apply_patch(source_path, json.dumps({'operations':[
+    {'op':'add_node','graph':'EventGraph','kind':'custom_event','id':'seed','name':'WorkbenchSeed'}
+]}), package_dir+'/BP_Seed'))
+assert seed['success'] and seed['saved'], seed
+source_path = seed['blueprint']['asset']
 baseline = json.loads(lib.inspect_blueprint(source_path))["blueprint"]
 checks = []
 
@@ -77,7 +82,7 @@ check("duplicate variable rejected", not duplicate["success"])
 check("invalid JSON rejected", not json.loads(lib.apply_patch(source_path, "{bad"))["success"])
 check("missing pin rejected", not patch(ops + [{"op": "set_default", "graph": "EventGraph", "node": "set_flag", "pin": "missing", "value": "true"}])["success"])
 check("unknown operation rejected", not patch([{"op": "unknown", "graph": "EventGraph"}])["success"])
-check("unsupported fields rejected", not patch([{"op": "add_variable", "name": "Bad", "type": "bool", "container": "array"}])["success"])
+check("unsupported container rejected", not patch([{"op": "add_variable", "name": "Bad", "type": "bool", "container": "array"}])["success"])
 check("invalid scalar default rejected", not patch(ops + [{"op": "set_default", "graph": "EventGraph", "node": "set_flag", "pin": "WorkbenchFlag", "value": "not_a_boolean"}])["success"])
 types = patch([{"op": "add_variable", "name": "Value_" + t, "type": t} for t in ("int", "float", "double", "string", "name")] + [{"op": "add_variable", "name": "OwnerActor", "type": "object", "object": "/Script/Engine.Actor"}])
 check("supported scalar and object variable types compile", types["success"])
@@ -86,7 +91,7 @@ check("source overwrite rejected", not patch([], package_dir + "/BP_Source")["su
 check("source unchanged after rejected patches", json.loads(lib.inspect_blueprint(source_path))["blueprint"] == baseline)
 
 # Regression: UE duplicates regenerate node GUIDs. Real edits must resolve exported source endpoints.
-existing_event = next(n for g in baseline['graphs'] if g['name'] == 'EventGraph' for n in g['nodes'] if n['title'] == 'Event BeginPlay')
+existing_event = next(n for g in baseline['graphs'] if g['name'] == 'EventGraph' for n in g['nodes'] if n['id'] == seed['aliases']['seed'])
 existing_pin = next(p for p in existing_event['pins'] if p['name'] == 'then')
 existing_edit = patch([
     node('call', 'existing_print', owner='/Script/Engine.KismetSystemLibrary', function='PrintString'),
@@ -116,7 +121,43 @@ pruned=patch(dead+[{'op':'remove_unused_nodes','graph':'EventGraph','nodes':['de
 check('disconnected old chain removed while shared data producer survives',pruned['success'] and 'dead_branch' not in pruned['aliases'] and 'get_flag' in pruned['aliases'])
 check('invalid comment bounds rejected',not patch([node('comment','bad_comment',text='bad',width=-1,height=100)])['success'])
 
-# Project-specific inheritance fixtures are intentionally excluded.
+# Retained generic extensions are checked against engine-owned reflected types.
+signature = patch([{'op':'signature','name':'ComputeFlag','parameters':[
+    {'name':'Flag','type':'bool','direction':'input'},
+    {'name':'Result','type':'bool','direction':'output'},
+    {'name':'Temporary','type':'bool','direction':'local'}]}])
+check('generic function signature compiles with input output and local', signature['success'])
+check('signature graph exports typed entry and return pins', any(
+    p['name']=='Result' and p['type']['category']=='bool'
+    for g in signature['blueprint']['graphs'] if g['name']=='ComputeFlag' for n in g['nodes'] for p in n['pins']))
+component = patch([{'op':'add_component','name':'WorkbenchProbe','class':'/Script/Engine.BoxComponent'},
+    node('component_event','overlap',variable='WorkbenchProbe',name='OnComponentBeginOverlap')])
+check('generic component and bound overlap event compile', component['success'])
+check('invalid component class rejected', not patch([{'op':'add_component','name':'Bad','class':'/Script/Engine.Actor'}])['success'])
+check('explicit call refresh compiles', patch(ops+[{'op':'refresh_calls','functions':['PrintString']}])['success'])
+check('unscoped call refresh rejected', not patch([{'op':'refresh_calls'}])['success'])
+map_result = patch([{'op':'add_variable','name':'Identities','type':'name','container':'map','value_object':'/Script/CoreUObject.Guid'}])
+check('map member retains key and struct value reflection', map_result['success'] and map_result['blueprint']['variables'][0]['type']['container']==3)
+
+# Engine-owned parent contracts: no game module or fixture native class required.
+factory.set_editor_property("parent_class", unreal.UserWidget)
+widget = unreal.AssetToolsHelpers.get_asset_tools().create_asset("WBP_Source", package_dir, unreal.WidgetBlueprint, unreal.WidgetBlueprintFactory())
+check("Widget Blueprint fixture created", widget is not None)
+widget_path = widget.get_path_name()
+widget_baseline = json.loads(lib.inspect_blueprint(widget_path))["blueprint"]
+widget_ops = [{"op":"add_variable","name":"WidgetFlag","type":"bool"},
+              {"op":"add_override","name":"IsInteractable"},
+              {"op":"add_override","name":"Destruct","graph":"EventGraph"}]
+overrides = json.loads(lib.apply_patch(widget_path, json.dumps({"operations":widget_ops})))
+check("Widget return-valued and event overrides compile: " + json.dumps(overrides.get("error")), overrides["success"])
+check("override function exposes entry and return", len(next(g for g in overrides["blueprint"]["graphs"] if g["name"] == "IsInteractable")["nodes"]) >= 2)
+check("Widget preview preserves source including Designer", json.loads(lib.inspect_blueprint(widget_path))["blueprint"] == widget_baseline)
+widget_destination = package_dir + "/WBP_Patched"
+widget_saved = json.loads(lib.apply_patch(widget_path, json.dumps({"operations":widget_ops}), widget_destination))
+check("Widget logic copy compiles and saves without warnings", widget_saved["success"] and widget_saved["saved"] and widget_saved["compile_warnings"] == 0)
+check("project-only HUD operation rejected", not patch([{"op":"hud_buttons"}])["success"])
+
+ops.append(node('comment','saved_comment',text='Persistent comment',details='Saved details: 中文说明',width=700,height=300))
 destination = package_dir + "/BP_Patched"
 rejected_save = patch(ops + [link("start", "then", "set_flag", "execute")], destination)
 check("failed patch does not save destination", not rejected_save["success"] and not rejected_save["saved"])
@@ -138,6 +179,6 @@ check('writeback retains original package identity', write_result['blueprint']['
 check('writeback creates an existing original-asset backup', Path(write_result['backup_file']).is_file())
 write_node = next(n for g in write_result['blueprint']['graphs'] for n in g['nodes'] if n['id']==saved['aliases']['set_flag'])
 check('writeback updates the requested existing pin', next(p['default'] for p in write_node['pins'] if p['name']=='WorkbenchFlag')=='false')
-manifest = {"checks": checks, "destination": destination, "fixture_file": str(fixture_file), "source": source_path, "run_id": run_id, 'writeback_node':saved['aliases']['set_flag'], 'writeback_backup':write_result['backup_file'], 'temporary':temporary, 'receipt':receipt, 'write_patch':write_patch, 'write_result':write_result}
+manifest = {"comment_node":saved["aliases"]["saved_comment"], "widget_destination":widget_destination, "checks": checks, "destination": destination, "fixture_file": str(fixture_file), "source": source_path, "run_id": run_id, 'writeback_node':saved['aliases']['set_flag'], 'writeback_backup':write_result['backup_file'], 'temporary':temporary, 'receipt':receipt, 'write_patch':write_patch, 'write_result':write_result}
 (report_dir / "test-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 unreal.log("BLUEPRINT_WORKBENCH_TESTS_PASSED " + str(len(checks)))
