@@ -1,5 +1,6 @@
+#requires -Version 7.0
 function Get-WorkbenchContext {
-    param([string]$ProjectFile, [string]$EngineRoot)
+    param([string]$ProjectFile, [string]$EngineRoot, [switch]$MemoryCache)
     $project = (Resolve-Path -LiteralPath $ProjectFile -ErrorAction Stop).Path
     if ([IO.Path]::GetExtension($project) -ne '.uproject') { throw 'ProjectFile must be an existing .uproject file.' }
     $engine = (Resolve-Path -LiteralPath $EngineRoot -ErrorAction Stop).Path
@@ -9,16 +10,20 @@ function Get-WorkbenchContext {
     $version = Get-Content -LiteralPath $versionFile -Raw | ConvertFrom-Json
     $reports = Join-Path (Split-Path -Parent $project) 'Saved/BlueprintWorkbench'
     New-Item -ItemType Directory -Force -Path $reports | Out-Null
-    return @{ Project=$project; Root=(Split-Path -Parent $project); Engine=$engine; Editor=$editor; Reports=$reports; Version="$($version.MajorVersion).$($version.MinorVersion).$($version.PatchVersion)" }
+    $editorArguments = @()
+    if ($MemoryCache) { $editorArguments += '-DDC-ForceMemoryCache' }
+    return @{ Project=$project; Root=(Split-Path -Parent $project); Engine=$engine; Editor=$editor; Reports=$reports; EditorArguments=$editorArguments; Version="$($version.MajorVersion).$($version.MinorVersion).$($version.PatchVersion)" }
 }
 function Invoke-WorkbenchPython {
     param($Context, [string]$Script, [string]$LogFile)
-    & $Context.Editor $Context.Project -run=pythonscript "-script=$Script" -unattended -nop4 -NullRHI -nosound "-abslog=$LogFile"
+    $editorArguments = $Context.EditorArguments
+    $Script = [IO.Path]::GetFullPath($Script).Replace('\','/')
+    & $Context.Editor $Context.Project -run=pythonscript "-script=$Script" -unattended -nop4 -NullRHI -nosound "-abslog=$LogFile" @editorArguments
     if ($LASTEXITCODE -ne 0) { throw "UE Python failed ($LASTEXITCODE). Log: $LogFile" }
 }
 function Copy-WorkbenchSource {
     param([string]$SourceRoot, [string]$Destination)
-    foreach ($entry in @('BlueprintWorkbench.uplugin','Source','Scripts','Docs','README.md','AGENTS.md')) {
+    foreach ($entry in @('BlueprintWorkbench.uplugin','Source','Scripts','Docs','Config','README.md','AGENTS.md','LICENSE')) {
         $path = Join-Path $SourceRoot $entry
         $files = if (Test-Path -LiteralPath $path -PathType Container) { Get-ChildItem -LiteralPath $path -File -Recurse } else { Get-Item -LiteralPath $path -ErrorAction Stop }
         foreach ($file in $files) {

@@ -7,7 +7,8 @@ param(
     [switch]$WriteBack,
     [switch]$TemporaryCopy,
     [string]$ReportFile,
-    [Parameter(Mandatory)][string]$EngineRoot
+    [Parameter(Mandatory)][string]$EngineRoot,
+    [switch]$MemoryCache
 )
 $ErrorActionPreference = 'Stop'
 if ($PatchFile -and $PresentationFile) { throw 'Use PatchFile or PresentationFile, not both.' }
@@ -15,7 +16,9 @@ if ($WriteBack -and ((-not $PatchFile -and -not $PresentationFile) -or $Destinat
 if ($TemporaryCopy -and ((-not $PatchFile -and -not $PresentationFile) -or -not $DestinationPackage -or $WriteBack -or $DestinationPackage -notmatch '^/Game/Workbench/(?:[A-Za-z0-9_]+/)*[A-Za-z0-9_]+$')) { throw 'TemporaryCopy requires an edit specification and a new destination under /Game/Workbench/.' }
 if ($WriteBack -and @(Get-Process UnrealEditor -ErrorAction SilentlyContinue).Count -ne 0) { throw 'Save work and close interactive Unreal editors before writeback.' }
 . "$PSScriptRoot/Workbench.Common.ps1"
-$context = Get-WorkbenchContext $ProjectFile $EngineRoot
+$context = Get-WorkbenchContext $ProjectFile $EngineRoot -MemoryCache:$MemoryCache
+$editorArguments = $context.EditorArguments
+$scriptRoot = $PSScriptRoot.Replace('\','/')
 $projectRoot = $context.Root
 $runId = [Guid]::NewGuid().ToString('N')
 $outputDirectory = Join-Path $projectRoot 'Saved/BlueprintWorkbench'
@@ -38,14 +41,14 @@ try {
     $env:BLUEPRINT_WORKBENCH_REQUEST = $requestFile
     & (Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe') `
         $context.Project -run=pythonscript `
-        "-script=$PSScriptRoot/RunWorkbench.py" -unattended -nop4 -NullRHI -nosound `
-        "-abslog=$outputDirectory/$runId.log"
+        "-script=$scriptRoot/RunWorkbench.py" -unattended -nop4 -NullRHI -nosound `
+        "-abslog=$outputDirectory/$runId.log" @editorArguments
     $processExit = $LASTEXITCODE
     if ($processExit -eq 0 -and $WriteBack) {
         & (Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe') `
             $context.Project -run=pythonscript `
-            "-script=$PSScriptRoot/FinalizeWorkbench.py" -unattended -nop4 -NullRHI -nosound `
-            "-abslog=$outputDirectory/$runId-finalize.log"
+            "-script=$scriptRoot/FinalizeWorkbench.py" -unattended -nop4 -NullRHI -nosound `
+            "-abslog=$outputDirectory/$runId-finalize.log" @editorArguments
         $processExit = $LASTEXITCODE
     }
 } finally { $env:BLUEPRINT_WORKBENCH_REQUEST = $oldRequest }

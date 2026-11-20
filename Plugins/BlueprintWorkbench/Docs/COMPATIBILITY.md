@@ -1,5 +1,19 @@
 # 兼容矩阵
 
+## 2026-11-20：0.4.1 分发验收
+
+| 环境 | 本轮验证 | 限制 |
+|---|---|---|
+| UE 5.7.4 / Windows x64 | UAT BuildPlugin 成功；预编译包安装到全新纯蓝图宿主，无项目 Source/Editor Target；65 项集成 + 7 项 CLI 通过 | 同机不同宿主验证，不是干净机器验证；命令使用显式 MemoryCache；只承诺匹配引擎 BuildId |
+| UE 5.5.4 / Windows x64 | 全局 checkout 脚本在既有隔离宿主重新通过 65 项集成 | 原生插件沿用已构建版本，本轮未修改 C++；UAT 被本机默认 PicoSpatialAudio 阻断，尚无验收过的 5.5 预编译包 |
+| 无 UE 的安装检查 | 源码安装、已有插件拒绝覆盖、二进制文件复制、错误 BuildId 安装前拒绝、源码 ZIP 内容检查通过 | 合成文件只验证安装器契约，不代表 DLL 能加载；实际 DLL 加载见 5.7.4 一行 |
+
+另有 17 项 Python 算法/清理边界测试通过。完整日志和诊断留在本机测试宿主；精简结果见 [validation/2026-11-20-summary.json](validation/2026-11-20-summary.json)。新增 Windows CI 的远端状态以对应提交的 Actions 结果为准。未验收编辑器原生图画布、游戏打包/PIE、设备、其他平台或其他引擎构建。预编译包及源码下载以[原仓库 v0.4.1 Release](https://github.com/rainerpj/unreal-blueprint-workbench/releases/tag/v0.4.1)为准。
+
+本轮分发测试修复：UAT 默认过滤漏掉 Scripts/Docs，新增过滤后继续发现 Config 未包含；安装器原本仅复制源码；Windows 反斜杠脚本路径被 UE Python 解读为转义。上述修复后重跑相关安装、集成与 CLI 流程。缓存服务故障使用显式内存缓存参数绕过，没有改动用户全局 UE 配置。
+
+## 2026-11-19：0.4.0 历史验证
+
 验证日期：2026-11-19。平台：Windows x64。主验收版本：UE 5.5.4。按每个引擎独立生成原生最小宿主、构建插件并由该版本创建测试资产；没有降级打开现有项目。
 
 | 引擎 | 构建／加载 | 工具集成检查 | CLI 端到端 | 结论 |

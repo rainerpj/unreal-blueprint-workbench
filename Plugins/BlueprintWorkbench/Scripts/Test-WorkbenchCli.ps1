@@ -1,8 +1,8 @@
-param([Parameter(Mandatory)][string]$ProjectFile, [Parameter(Mandatory)][string]$EngineRoot)
+param([Parameter(Mandatory)][string]$ProjectFile, [Parameter(Mandatory)][string]$EngineRoot, [switch]$MemoryCache)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/Workbench.Common.ps1"
-$context = Get-WorkbenchContext $ProjectFile $EngineRoot
-$common = @{ ProjectFile=$context.Project; EngineRoot=$context.Engine }
+$context = Get-WorkbenchContext $ProjectFile $EngineRoot -MemoryCache:$MemoryCache
+$common = @{ ProjectFile=$context.Project; EngineRoot=$context.Engine; MemoryCache=$MemoryCache }
 $checks = @()
 Invoke-WorkbenchPython $context "$PSScriptRoot/TestCliSetup.py" (Join-Path $context.Reports 'cli-setup.log')
 $manifest = Get-Content -LiteralPath (Join-Path $context.Reports 'cli-manifest.json') -Raw | ConvertFrom-Json

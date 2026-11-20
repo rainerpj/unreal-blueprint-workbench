@@ -1,7 +1,7 @@
-param([Parameter(Mandatory)][string]$ProjectFile, [Parameter(Mandatory)][string]$EngineRoot)
+param([Parameter(Mandatory)][string]$ProjectFile, [Parameter(Mandatory)][string]$EngineRoot, [switch]$MemoryCache)
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot/Workbench.Common.ps1"
-$context = Get-WorkbenchContext $ProjectFile $EngineRoot
+$context = Get-WorkbenchContext $ProjectFile $EngineRoot -MemoryCache:$MemoryCache
 # Creates and edits only uniquely named test assets, never supplied gameplay assets.
 foreach ($scriptName in @('TestWorkbench','TestWorkbenchReload')) {
     Invoke-WorkbenchPython $context "$PSScriptRoot/$scriptName.py" (Join-Path $context.Reports "$scriptName.log")

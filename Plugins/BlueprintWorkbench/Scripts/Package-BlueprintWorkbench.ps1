@@ -1,3 +1,4 @@
+#requires -Version 7.0
 param([Parameter(Mandatory)][string]$OutputFile)
 $ErrorActionPreference = 'Stop'
 $output = [IO.Path]::GetFullPath($OutputFile)
@@ -7,7 +8,7 @@ New-Item -ItemType Directory -Force -Path (Split-Path -Parent $output) | Out-Nul
 $sourceRoot = Split-Path -Parent $PSScriptRoot
 $archive = [IO.Compression.ZipFile]::Open($output, [IO.Compression.ZipArchiveMode]::Create)
 try {
-    foreach ($entry in @('BlueprintWorkbench.uplugin','Source','Scripts','Docs','README.md','AGENTS.md')) {
+    foreach ($entry in @('BlueprintWorkbench.uplugin','Source','Scripts','Docs','Config','README.md','AGENTS.md','LICENSE')) {
         $path = Join-Path $sourceRoot $entry
         $files = if (Test-Path -LiteralPath $path -PathType Container) { Get-ChildItem -LiteralPath $path -File -Recurse } else { Get-Item -LiteralPath $path }
         foreach ($file in $files) {

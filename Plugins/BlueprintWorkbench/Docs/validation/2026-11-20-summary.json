@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-20",
+  "version": "0.4.1",
+  "native_code_changed": false,
+  "global_skill": "blueprint-workbench",
+  "ue57": {
+    "engine": "5.7.4",
+    "platform": "Win64",
+    "uat_build": "passed",
+    "blueprint_only_host": true,
+    "integration_checks": 65,
+    "cli_checks": 7,
+    "memory_cache": true,
+    "fresh_machine": false
+  },
+  "ue55": {
+    "engine": "5.5.4",
+    "integration_checks": 65,
+    "native_plugin": "existing isolated host build",
+    "uat_build": "blocked by locally enabled PicoSpatialAudio",
+    "precompiled_distribution_validated": false
+  },
+  "python_checks": 17,
+  "distribution_contracts": [
+    "source install",
+    "existing install refusal",
+    "binary payload copy",
+    "BuildId mismatch rejected before destination creation",
+    "source ZIP includes required files and excludes binaries/cache"
+  ],
+  "publication": "https://github.com/rainerpj/unreal-blueprint-workbench/releases/tag/v0.4.1",
+  "unverified": [
+    "native graph canvas",
+    "gameplay PIE",
+    "device",
+    "game packaging",
+    "other platforms",
+    "other engine builds"
+  ]
+}

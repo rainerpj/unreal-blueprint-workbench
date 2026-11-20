@@ -7,7 +7,8 @@ param(
     [switch]$WriteBack,
     [switch]$TemporaryCopy,
     [string]$ReportFile,
-    [Parameter(Mandatory)][string]$EngineRoot
+    [Parameter(Mandatory)][string]$EngineRoot,
+    [switch]$MemoryCache
 )
 $ErrorActionPreference = 'Stop'
 & "$PSScriptRoot/../../Plugins/BlueprintWorkbench/Scripts/Invoke-BlueprintWorkbench.ps1" @PSBoundParameters

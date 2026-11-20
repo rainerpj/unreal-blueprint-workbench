@@ -11,6 +11,7 @@
 | WorkbenchLifecycle.register_copy／finalize | 中间副本登记、独立重载核对、引用检查后清理 | Scripts/WorkbenchLifecycle.py | RunWorkbench.py、FinalizeWorkbench.py、TestWorkbenchReload.py |
 | WorkbenchPresentation.plan／verify_logic／verify_presentation | 显式分组布局、注释、候选清理及语义核对 | Scripts/WorkbenchPresentation.py | RunWorkbench.py、TestPresentation.py |
 | Install／New-ValidationHost | 不覆盖安装；生成独立版本宿主 | Scripts/*.ps1 | 安装说明；本轮独立宿主实际使用记录见兼容矩阵 |
+| Build-BlueprintWorkbenchPackage／Install | UAT 生成 Win64 包；FilterPlugin 保留脚本与文档；WorkbenchBuild 与引擎 BuildId 匹配后安装预编译文件 | Scripts/Build-BlueprintWorkbenchPackage.ps1、Install-BlueprintWorkbench.ps1、Config/FilterPlugin.ini | README 预编译安装命令；纯蓝图宿主分发验证 |
 
 ## Parkour 迁移边界
 

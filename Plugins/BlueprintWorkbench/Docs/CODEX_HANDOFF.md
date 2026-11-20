@@ -1,6 +1,16 @@
 # Blueprint Workbench 通用化交接
 
-更新：2026-11-19。用户已批准通用化，随后明确其他项目主要使用 UE 5.5，优先验收 5.5。
+更新：2026-11-20。当前为 0.4.1，采用 MIT。完整版本证据以 [COMPATIBILITY.md](COMPATIBILITY.md) 为准；发布与附件以[原仓库 Release](https://github.com/rainerpj/unreal-blueprint-workbench/releases/tag/v0.4.1)为准。
+
+## 0.4.1 分发更新
+
+UAT 打包保留脚本、Config、文档和 LICENSE；安装器区分源码与预编译包，验证 BuildId 后复制二进制。修正 Windows 脚本路径转义，新增显式 MemoryCache。5.7.4 Win64 包已在全新纯蓝图宿主通过 65 项集成与 7 项 CLI 检查；5.5.4 全局脚本在原隔离宿主通过 65 项检查，但 UAT 受本机 PicoSpatialAudio 阻断，没有经过验收的 5.5 预编译分发。用户已授权发布本版本。
+
+正确性检查实际覆盖打包过滤、源码/二进制安装与 BuildId 拒绝、CLI 预览/写回/finalize；必要性检查确认复用现有接口，无新增常驻服务或运行时模块。原生 C++ 图逻辑本轮未修改，不能把本轮分发检查称为全量 C++ 审计。
+
+## 以下为 2026-11-19 的 0.4.0 历史记录
+
+用户已批准通用化，随后明确其他项目主要使用 UE 5.5，优先验收 5.5。
 
 ## 已完成
 

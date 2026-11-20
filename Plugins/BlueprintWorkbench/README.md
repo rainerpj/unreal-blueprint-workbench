@@ -1,4 +1,6 @@
-# Blueprint Workbench 0.4.0
+# Blueprint Workbench 0.4.1
+
+本插件代码采用 [MIT 许可证](LICENSE)。Unreal Engine 本身不包含在本授权中。
 
 独立 UE Editor 源码插件：用 JSON 补丁检查、编辑普通 Blueprint 和 Widget Blueprint 的 K2 逻辑图。通过 UE Python／PowerShell 调用，不依赖 Parkour、联网服务或 Computer Use，不增加游戏运行时模块。
 
@@ -6,7 +8,23 @@
 
 ## 安装
 
-环境：Windows x64、目标 UE 的 C++ 构建工具链；源码包需要编译。插件声明 PythonScriptPlugin 与 EditorScriptingUtilities 依赖。
+### 预编译 ZIP（无需 Visual Studio）
+
+从仓库 Releases 选择与 **UE 完整版本及引擎构建一致的 Win64 包**。GitHub 的 `Source code.zip` 是源码，不是预编译包。如果尚未发布所需版本的附件，请使用下面的源码安装流程，不要混用相邻版本 DLL。
+
+关闭目标项目编辑器，解压发行 ZIP，在解压出的插件目录运行（需要 PowerShell 7）：
+
+```powershell
+& ./Scripts/Install-BlueprintWorkbench.ps1 -ProjectFile 'D:/MyGame/MyGame.uproject' -EngineRoot 'C:/Program Files/Epic Games/UE_5.7'
+```
+
+安装器检查引擎 BuildId 并复制 DLL、预编译数据和脚本，可用于纯蓝图项目；拒绝覆盖已有插件。也可以把解压出的 `BlueprintWorkbench` 整个目录放入项目 `Plugins/`，但需自行保证引擎构建匹配。插件或 PythonScriptPlugin、EditorScriptingUtilities 如果被项目显式禁用，需要启用后重启编辑器。
+
+安装完成后使用项目插件内 `Scripts/Invoke-BlueprintWorkbench.ps1`，命令见下文。这是脚本驱动的蓝图工具，没有聊天窗口、MCP 服务或自动理解自然语言的编辑器面板；Codex 是可选调用方，不是运行依赖。
+
+### 源码安装（需要 C++ 工具链）
+
+环境：Windows x64、PowerShell 7、目标 UE 的 C++ 构建工具链；源码包需要编译。UE 内使用引擎自带 Python，不需要安装系统 Python。插件声明 PythonScriptPlugin 与 EditorScriptingUtilities 依赖。
 
 1. 关闭目标项目编辑器，将整个目录放到 `<项目>/Plugins/BlueprintWorkbench`。也可在本源码目录执行：
 
@@ -24,11 +42,13 @@
   -EngineRoot 'C:/Program Files/Epic Games/UE_5.5' -EditorTarget MyGameEditor
 ```
 
-纯蓝图项目也不能直接加载未编译的源码插件。可先添加 C++ 类获得 Editor Target，再构建；或用对应引擎的 `RunUAT.bat BuildPlugin -Plugin=<绝对路径>/BlueprintWorkbench.uplugin -Package=<新的输出目录> -TargetPlatforms=Win64` 生成该引擎专用二进制包，再安装输出插件。本轮源码交付与测试不代表已验证 UAT 预编译分发路径或所有纯蓝图项目。
+纯蓝图项目不能直接加载未编译的源码插件。优先使用匹配的预编译包；没有对应包时，可添加 C++ 类获得 Editor Target，再构建，或由具备工具链的开发者按下文生成分发包。实际验证范围以兼容矩阵为准。
 
 ## 使用
 
 所有 CLI 显式指定目标工程和引擎，不从当前目录猜测工程，不硬编码引擎安装路径。
+
+如果引擎启动报 DDC/Zen 没有可写缓存节点，可显式添加 `-MemoryCache` 使用本进程内存缓存。它也适用于 Validate 和 Test-WorkbenchCli；不是默认开启，不修改引擎或项目缓存配置。
 
 ```powershell
 # Inspect：读取已保存资产；另一编辑器窗口未保存的内容不可见。
@@ -71,6 +91,14 @@ preview = json.loads(lib.apply_patch('/Game/Blueprints/BP_Player', json.dumps({'
 
 ## 验证与交付
 
+维护者生成可供纯蓝图项目使用的 Win64 包（需要对应 UE 和 C++ 工具链，输出目录必须不存在）：
+
+```powershell
+& ./Scripts/Build-BlueprintWorkbenchPackage.ps1 -EngineRoot 'C:/Program Files/Epic Games/UE_5.7' -OutputDirectory 'D:/Deliveries/Workbench-UE57'
+```
+
+此命令执行 UAT BuildPlugin，按 FilterPlugin.ini 保留必需脚本、配置和文档，并产生版本标识及 ZIP。ZIP 不包含 PDB 调试符号；源码和 UAT 预编译数据保留。构建后必须在全新纯蓝图项目中测试安装、加载、预览、写回与独立重载。UAT 构建成功不等于已发布 GitHub Release。引擎全局第三方插件可能影响 UAT 自动生成的宿主；遇到此类错误请检查构建日志，在干净的相应引擎环境构建，不要替换其他版本的 DLL。
+
 ```powershell
 # 创建独立的原生最小宿主；目录必须不存在。不会打开或降级现有项目。
 & ./Scripts/New-ValidationHost.ps1 -HostDirectory 'D:/WorkbenchTests/UE55' `
@@ -82,7 +110,7 @@ preview = json.loads(lib.apply_patch('/Game/Blueprints/BP_Player', json.dumps({'
 & ./Scripts/Test-WorkbenchCli.ps1 -ProjectFile 'D:/WorkbenchTests/UE55/WorkbenchHost.uproject' `
   -EngineRoot 'C:/Program Files/Epic Games/UE_5.5'
 # 生成源码 ZIP，排除构建产物、测试宿主、缓存和项目资产；不覆盖已有 ZIP。
-& ./Scripts/Package-BlueprintWorkbench.ps1 -OutputFile 'D:/Deliveries/BlueprintWorkbench-0.4.0-source.zip'
+& ./Scripts/Package-BlueprintWorkbench.ps1 -OutputFile 'D:/Deliveries/BlueprintWorkbench-0.4.1-source.zip'
 ```
 
 验证器只修改唯一命名的测试资产；成功后清理本轮保存的测试资产，保留日志／备份。失败现场保留供诊断。它不是玩法接线、PIE、设备或正式项目迁移验收。独立宿主默认禁用其他引擎插件，避免全局安装的第三方插件影响测试，不修改引擎安装。

@@ -10,3 +10,11 @@ jobs:
           python-version: '3.11'
       - run: python -m unittest discover -s Plugins/BlueprintWorkbench/Scripts -p TestCleanupLifecycle.py -v
       - run: python -m unittest discover -s Plugins/BlueprintWorkbench/Scripts -p TestPresentation.py -v
+
+  distribution:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check source and precompiled installation contracts
+        shell: pwsh
+        run: ./Plugins/BlueprintWorkbench/Scripts/Test-Distribution.ps1

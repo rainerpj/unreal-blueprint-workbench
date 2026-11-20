@@ -1,6 +1,19 @@
 # Blueprint Workbench 交接
 
-更新：2026-11-19。
+更新：2026-11-20。
+
+## 0.4.1：Codex 全局入口与 GitHub 分发
+
+- 全局维护 checkout 位于 `<CODEX_HOME>/tools/blueprint-workbench`，仍指向原 `rainerpj/unreal-blueprint-workbench` 仓库，基于 `4d090a1`。新增全局 `blueprint-workbench` 技能，并在 `ue-lead-programmer` 中添加调用引用。原 Parkour 项目与旧本地 checkout 保留；后续通用修复在全局 checkout 维护，不双向同步项目定制版。
+- 用户选择 MIT 许可证；根目录和插件目录提供 LICENSE，源码安装、ZIP 与 UAT 包包含许可文件。Fab 上架不再是本轮目标。
+- 新增 Build-BlueprintWorkbenchPackage 和 FilterPlugin.ini，生成按 UE 构建区分的 Win64 分发 ZIP；修复 UAT 漏打 Scripts/Docs/Config 和安装器漏复制二进制的问题。预编译安装检查引擎 BuildId，拒绝覆盖现有插件。
+- 修复 UE Python 的 Windows 反斜杠路径转义问题；提供显式 `-MemoryCache` 处理已诊断的本机 DDC/Zen 无可写缓存错误，不修改引擎配置。文档明确 PowerShell 7、源码与预编译附件区别，以及脚本驱动的产品边界。
+- 验证：5.7.4 UAT Win64 构建通过；全新无项目 C++ 模块的纯蓝图宿主使用包内脚本通过 65 项集成和 7 项 CLI 检查（预览、新副本、备份写回、独立重载、排版、登记清理）。5.5.4 原隔离宿主用全局脚本重新通过 65 项集成；5.5 UAT 被本机默认 PicoSpatialAudio 插件阻断，不交付未经验证的 5.5 二进制包。原生 C++ 图逻辑本轮未修改。
+- 17 项 Python 测试、源码/二进制安装契约及源码 ZIP 检查通过；新增 Windows CI 安装检查，尚未远端执行。详细范围见插件 COMPATIBILITY.md 和 validation/2026-11-20-summary.json。
+- 正确性复核覆盖 BuildPlugin→过滤→ZIP→安装、BuildId 拒绝、CLI→RunWorkbench→Finalize 及失败退出；真实分发验证发现并修复 Config 漏包和反斜杠转义。必要性复核：保留现有 CLI/API，未新增 MCP、常驻服务、游戏模块或另一套图操作；缓存开关仅显式启用，源码安装继续复用 Copy-WorkbenchSource。
+- 用户已于 2026-11-20 授权提交、推送和发布 0.4.1。发布内容为源码 ZIP 与 UE 5.7.4 Win64 预编译 ZIP；发布状态和下载以[原仓库 v0.4.1 Release](https://github.com/rainerpj/unreal-blueprint-workbench/releases/tag/v0.4.1)为准，CI 以对应提交的 Actions 结果为准。实际原生编辑器画布、玩法 PIE、设备、干净机器及其他引擎版本尚未验收；不宣称所有代码无问题或所有工程即插即用。
+
+## 历史记录
 
 ## 0.4.0 通用化与 UE 5.5 优先验收
 
