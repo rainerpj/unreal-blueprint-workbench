@@ -2,6 +2,13 @@
 
 通过 JSON 补丁检查、编辑、编译与备份写回 Unreal Engine 蓝图的 Editor 插件。当前版本 **0.4.1**，核心功能主要验证版本 **UE 5.5.4**，同时验证 **UE 5.7.4**。本仓库继续原 0.3 的提交历史，是唯一维护入口。预编译分发的验证情况单独记录在兼容矩阵中。
 
+## main 分支新增功能（2026-11-23）
+
+- 跨组长线与估算交叉检查、保形平移，以及受限的成员读取／Self就近复制；用法见[插件手册](Plugins/BlueprintWorkbench/README.md)。
+- 可选 [Blueprint Assist 编辑器桥接](Plugins/BlueprintWorkbenchAssist/README.md)：直接调用另行安装的 Blueprint Assist 整理指定单入口函数图，支持普通／Widget蓝图，保留预览、逻辑核对、备份、保存及独立重载验证。
+
+这些是 0.4.1 发布后的源码更新，现有 0.4.1 Release 附件不包含它们。桥接已在 UE 5.7.4 验证；不附带 Blueprint Assist 源码、二进制或许可证，需自行安装兼容版本。新增能力的验证范围见交接记录，不沿用旧版本的全部兼容性结论。
+
 ## 安装与使用
 
 将 [Plugins/BlueprintWorkbench](Plugins/BlueprintWorkbench) 整个目录安装到目标项目的同名 Plugins 目录，使用对应引擎编译。通用脚本、测试和说明现在随插件一起分发，不依赖游戏项目类型或资产。

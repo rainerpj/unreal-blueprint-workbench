@@ -83,6 +83,36 @@ static FString Fail(const FObject& Out, const FString& Error)
     return Json(Out);
 }
 
+// Layout may duplicate only direct self/member reads, never arbitrary pure calls.
+static bool CanLocalizeRead(UEdGraphNode* Node)
+{
+    if (!Node) return false;
+    const UK2Node* K2 = Cast<UK2Node>(Node);
+    if (!K2 || !K2->IsNodePure()) return false;
+    if (!Cast<UK2Node_Self>(Node))
+    {
+        UK2Node_VariableGet* Get = Cast<UK2Node_VariableGet>(Node);
+        if (!Get || !Get->VariableReference.IsSelfContext()) return false;
+        FProperty* Property = Get->GetPropertyForVariableFromSkeleton();
+        if (!Property || Property->HasMetaData(TEXT("BlueprintGetter"))) return false;
+    }
+    int32 Outputs = 0;
+    for (UEdGraphPin* Pin : Node->Pins)
+    {
+        if (!Pin || Pin->bOrphanedPin || Pin->ParentPin || Pin->SubPins.Num() ||
+            Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec ||
+            Pin->PinType.bIsReference || Pin->PinType.IsContainer()) return false;
+        if (Pin->Direction == EGPD_Input && (Pin->LinkedTo.Num() || Pin->DefaultObject || !Pin->DefaultValue.IsEmpty())) return false;
+        if (Pin->Direction == EGPD_Output)
+        {
+            ++Outputs;
+            for (UEdGraphPin* Target : Pin->LinkedTo)
+                if (!Target || Target->PinType.bIsReference) return false;
+        }
+    }
+    return Outputs == 1;
+}
+
 static FObject PinType(const FEdGraphPinType& Type)
 {
     FObject Out = MakeShared<FJsonObject>();
@@ -184,6 +214,7 @@ static FObject Describe(UBlueprint* Blueprint)
             NodeItem->SetNumberField(TEXT("width"), Node->NodeWidth);
             NodeItem->SetNumberField(TEXT("height"), Node->NodeHeight);
             NodeItem->SetStringField(TEXT("comment"), Node->NodeComment);
+            NodeItem->SetBoolField(TEXT("localizable_read"), CanLocalizeRead(Node));
             if (UK2Node* K2Node = Cast<UK2Node>(Node)) NodeItem->SetBoolField(TEXT("pure"), K2Node->IsNodePure());
             if (UK2Node_CallFunction* Call = Cast<UK2Node_CallFunction>(Node))
                 NodeItem->SetBoolField(TEXT("latent"), !Call->GetTargetFunction() || Call->GetTargetFunction()->HasMetaData(TEXT("Latent")));
@@ -470,7 +501,16 @@ struct FPatch
         if (Id.IsEmpty() || Aliases.Contains(Id) || FGuid::Parse(Id, Guid)) return Reject(TEXT("New node id must be a unique non-Guid alias"));
         const FString Kind = String(Op, TEXT("kind"));
         UEdGraphNode* Added = nullptr;
-        if (Kind == TEXT("branch")) Added = Create<UK2Node_IfThenElse>(TargetGraph, [](auto*) {});
+        if (Kind == TEXT("local_read"))
+        {
+            UEdGraphNode* Original = ResolveNode(TargetGraph, String(Op, TEXT("source_node")));
+            if (!CanLocalizeRead(Original)) return Reject(TEXT("Local read requires an unconnected-context direct member/Self read without getter functions, containers or reference consumers"));
+            Added = DuplicateObject<UEdGraphNode>(Original, TargetGraph);
+            Added->CreateNewGuid();
+            for (UEdGraphPin* Pin : Added->Pins) { Pin->LinkedTo.Empty(); Pin->PinId = FGuid::NewGuid(); }
+            TargetGraph->AddNode(Added, false, false);
+        }
+        else if (Kind == TEXT("branch")) Added = Create<UK2Node_IfThenElse>(TargetGraph, [](auto*) {});
         else if (Kind == TEXT("return"))
         {
             UK2Node_FunctionResult* Original = nullptr;
@@ -619,7 +659,7 @@ struct FPatch
         else if (Kind == TEXT("refresh_calls")) Fields = {TEXT("op"), TEXT("functions")};
         else if (Kind == TEXT("add_variable")) Fields = {TEXT("op"), TEXT("name"), TEXT("type"), TEXT("object"), TEXT("container"), TEXT("value_object"), TEXT("editable")};
         else if (Kind == TEXT("add_override")) Fields = {TEXT("op"), TEXT("name"), TEXT("graph")};
-        else if (Kind == TEXT("add_node")) Fields = {TEXT("op"), TEXT("graph"), TEXT("kind"), TEXT("id"), TEXT("x"), TEXT("y"), TEXT("owner"), TEXT("function"), TEXT("variable"), TEXT("name"), TEXT("struct"), TEXT("text"), TEXT("details"), TEXT("width"), TEXT("height"), TEXT("members")};
+        else if (Kind == TEXT("add_node")) Fields = {TEXT("op"), TEXT("graph"), TEXT("kind"), TEXT("id"), TEXT("x"), TEXT("y"), TEXT("owner"), TEXT("function"), TEXT("variable"), TEXT("name"), TEXT("struct"), TEXT("text"), TEXT("details"), TEXT("width"), TEXT("height"), TEXT("members"), TEXT("source_node")};
         else if (Kind == TEXT("move_node")) Fields = {TEXT("op"), TEXT("graph"), TEXT("node"), TEXT("x"), TEXT("y")};
         else if (Kind == TEXT("remove_unused_nodes")) Fields = {TEXT("op"), TEXT("graph"), TEXT("nodes")};
         else if (Kind == TEXT("set_default")) Fields = {TEXT("op"), TEXT("graph"), TEXT("node"), TEXT("pin"), TEXT("pin_id"), TEXT("value")};

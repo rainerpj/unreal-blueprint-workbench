@@ -52,3 +52,8 @@
 不包含 Parkour hud_buttons、StageB 批处理或游戏类型。Widget Designer 控件树、Binding、动画可检查／复制，不提供通用编辑。Material、Niagara、Anim Blueprint、接口／宏库／函数库的图修改暂不支持；不支持引脚拆分或任意节点强制删除。
 
 工具只保证它报告的编辑／编译／保存结果。玩法语义、视觉布局、PIE、设备和正式项目迁移需另外验证。
+
+
+## 受限读取副本
+
+`add_node` 的 `kind=local_read` 使用同图 `source_node`，另需唯一 `id`，可指定 `x/y`。只复制引擎判定可就近读取的直接成员 getter／Self；所有连接清空，后续显式 connect/disconnect。Inspect 的 `localizable_read` 是规划提示，C++ 执行时会再次校验。不等价于任意节点克隆，不能用于执行节点或任意纯函数。

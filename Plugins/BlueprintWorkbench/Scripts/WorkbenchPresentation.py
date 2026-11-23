@@ -1,6 +1,7 @@
 """Presentation planning: scoped dead-node pruning, entry-local DAG layout and comment blocks."""
 from collections import defaultdict, deque
 import copy
+from WorkbenchCrossGroup import audit, compact
 
 COMMENT='/Script/UnrealEd.EdGraphNode_Comment'
 ORDINARY={'K2Node_CallFunction','K2Node_IfThenElse','K2Node_VariableGet','K2Node_VariableSet','K2Node_DynamicCast','K2Node_Knot','K2Node_BreakStruct','K2Node_GetEnumeratorNameAsString'}
@@ -114,6 +115,24 @@ def plan(graph,groups,candidates=()):
         ops.append({'op':'add_node','graph':graph['path'],'kind':'comment','id':'layout_comment_'+str(i),'x':x,'y':y,'width':width,'height':height,'text':group['title'],'details':group['details'],'members':sorted(group['nodes'])})
         obstacles.append((x,y,x+width,y+height))
         blocks.append({'title':group['title'],'entry':group['entry'],'nodes':sorted(group['nodes']),'bounds':[x,y,x+width,y+height]})
+    # Also optimize block-to-block and block-to-fixed-node wires after local layout.
+    draft=copy.deepcopy(graph)
+    draft['nodes']=[n for n in draft['nodes'] if n['id'] not in removed]
+    by_id={n['id']:n for n in draft['nodes']}
+    rigid=[]
+    for op in ops:
+        if op['op']=='move_node':by_id[op['node']].update(x=op['x'],y=op['y'])
+        elif op['op']=='add_node':
+            draft['nodes'].append({'id':op['id'],'class':COMMENT,'title':'Comment','pins':[],
+                'x':op['x'],'y':op['y'],'width':op['width'],'height':op['height']})
+            rigid.append(op['members']+[op['id']])
+    adjustment,_=compact(draft,rigid,movable=range(len(rigid)))
+    final={op['node']:op for op in adjustment['operations']}
+    for op in ops:
+        nid=op.get('node',op.get('id'))
+        if nid in final:op.update(x=final[nid]['x'],y=final[nid]['y'])
+    for block,op in zip(blocks,[o for o in ops if o['op']=='add_node']):
+        block['bounds']=[op['x'],op['y'],op['x']+op['width'],op['y']+op['height']]
     return {'operations':ops},{'graph':graph['path'],'removed':sorted(removed),'preserved_candidates':sorted(set(candidates)-removed),'blocks':blocks}
 
 def verify_logic(before,result,removed):
@@ -188,5 +207,25 @@ def verify_presentation(before,result,patch,description):
         if op['op']=='add_node' and op.get('kind')=='comment':
             n=next(n for g in after['graphs'] for n in g['nodes'] if n['id']==result['aliases'][op['id']])
             assert (n['comment'],n.get('details'),n['width'],n['height'])==(op['text'],op['details'],op['width'],op['height'])
-    assert metrics['backward_after']==0
+    if not description.get('translation_only'):
+        assert metrics['backward_after']==0
+    for bg in before['graphs']:
+        if bg['path'] != description['graph']: continue
+        ag=copy.deepcopy(next(g for g in after['graphs'] if g['path']==bg['path']))
+        reverse={mapping.get(bg['path']+'|'+n['id'],n['id']):n['id'] for n in bg['nodes']}
+        for n in ag['nodes']:
+            n['id']=reverse.get(n['id'],n['id'])
+            for p in n['pins']:
+                for link in p['links']:link['node']=reverse.get(link['node'],link['node'])
+        groups=description.get('groups',[b['nodes'] for b in description['blocks']])
+        metrics['whole_graph_before']=audit(bg,groups,description.get('after',{}).get('threshold',3000))
+        metrics['whole_graph_after']=audit(ag,groups,description.get('after',{}).get('threshold',3000))
+        if description.get('translation_only'):
+            assert metrics['whole_graph_after']==description['after'], 'Cross-group result differs from plan'
+            original={n['id']:n for n in bg['nodes']}
+            actual={n['id']:n for n in ag['nodes']}
+            for group in groups:
+                translations={(actual[n]['x']-original[n]['x'],actual[n]['y']-original[n]['y']) for n in group}
+                assert len(translations)==1, 'Rigid group distorted'
+            assert metrics['whole_graph_after']['cross_group']['maximum'] <= metrics['whole_graph_before']['cross_group']['maximum']
     return metrics

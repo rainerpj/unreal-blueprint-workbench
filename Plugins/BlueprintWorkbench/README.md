@@ -114,3 +114,37 @@ preview = json.loads(lib.apply_patch('/Game/Blueprints/BP_Player', json.dumps({'
 ```
 
 验证器只修改唯一命名的测试资产；成功后清理本轮保存的测试资产，保留日志／备份。失败现场保留供诊断。它不是玩法接线、PIE、设备或正式项目迁移验收。独立宿主默认禁用其他引擎插件，避免全局安装的第三方插件影响测试，不修改引擎安装。
+
+
+### Cross-group layout (2026-11-23)
+
+Normal presentation plans now translate their completed blocks using connections to other blocks and fixed outside nodes. Whole-graph audits include both execution and data wires, two-dimensional node-origin distance, and remaining edges over 3000 graph units. This is a diagnostic threshold, not a promise that all wires can fit below it.
+
+To compact an existing graph without rebuilding its internal layout, use a presentation file:
+
+```json
+{"graph":"EventGraph","mode":"cross_group","threshold":3000}
+```
+
+Existing comment regions and nearby ungrouped connected islands are translated rigidly. Because Inspect does not export authoritative comment membership, automatic groups use spatial containment; review the generated `.plan.json`. Alternatively supply `groups` as disjoint arrays of node IDs and `movable` as their zero-based indices. Nodes omitted from explicit groups are fixed when `movable` is supplied. No topology edits, reroutes, deletion, or comment text changes occur in this mode. Accepted moves reduce a combined crossing/length score, do not increase estimated crossings, avoid estimated block overlaps, and do not increase the original maximum cross-wire length. Existing internal overlaps and long internal wires remain unchanged.
+
+The report's `.presentation.json` records whole-graph before/after metrics and unresolved long edges. Node dimensions are estimates, not Slate measurements; a geometric preview is not native-editor visual acceptance. Blueprints with concrete self-type references may fail ordinary duplicate-class previews; hosts that expose `PreviewSavedAssetPatch` must preflight in a separate process before saving, as in the Parkour validation script. Do not ignore preview compiler errors or save in the same in-memory preview process.
+
+
+### Readability rules: local reads and crossing reduction
+
+For an explicitly authorized graph-wide readability pass, use:
+
+```json
+{"graph":"EventGraph","mode":"readability","threshold":1200,"max_copies":32}
+```
+
+* When a direct read feeds distant consumers, keep the closest consumer on the original and place a copy near each distant consumer. `max_copies` bounds growth. Sources that cannot be certified, or cannot fit nearby, are listed as skipped.
+* Only engine-certified direct member-variable getters and Self nodes qualify. No arbitrary pure functions (including random/time reads), execution nodes, validated getters, custom BlueprintGetter functions, externally connected contexts, split pins, containers, local variables, or reference consumers are copied. The C++ operation rechecks eligibility rather than trusting the JSON flag.
+* Existing `cross_group` and normal block layout now consider wire crossings as well as length. `readability` additionally adjusts pure-node positions inside existing comment membership to reduce internal crossings. It does not move execution nodes during this local refinement.
+* Crossings are strict intersections of estimated pin-to-pin straight segments, excluding shared-node fan-out/fan-in. They are an optimization proxy, not exact UE Bezier intersections; collinear overlap is not included. Remaining crossings and long wires are reported. If localization increases this metric, return the translation-only fallback instead.
+* Verification collapses only the declared equivalent read copies back to their sources and checks every original execution/data dependency and default. It also checks expected node positions and leaves other graphs untouched. This mode intentionally changes data-wire endpoints while preserving their source meaning; it is not the old exact-topology-only mode.
+
+Requires rebuilt plugin code for `localizable_read` inspection and `add_node(kind=local_read, source_node=...)`. Old plugin exports do not certify nodes and therefore cannot enable copying silently. Do not hot-replace a loaded editor DLL. Source updates are not deployment of a running project's binary.
+
+Tests: `python -m unittest TestPresentation TestCrossGroup TestReadability`; isolated `WorkbenchHost` UE scripts `TestReadabilityUE.py` and then `TestReadabilityReload.py`. Never point fixture tests at a production project. Actual Slate visual quality still needs editor inspection on a future authorized asset pass.

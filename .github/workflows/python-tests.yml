@@ -10,6 +10,9 @@ jobs:
           python-version: '3.11'
       - run: python -m unittest discover -s Plugins/BlueprintWorkbench/Scripts -p TestCleanupLifecycle.py -v
       - run: python -m unittest discover -s Plugins/BlueprintWorkbench/Scripts -p TestPresentation.py -v
+      - run: python -m unittest discover -s Plugins/BlueprintWorkbench/Scripts -p TestCrossGroup.py -v
+      - run: python -m unittest discover -s Plugins/BlueprintWorkbench/Scripts -p TestReadability.py -v
+      - run: python -m unittest discover -s Plugins/BlueprintWorkbenchAssist/Scripts -p TestAssistVerification.py -v
 
   distribution:
     runs-on: windows-latest

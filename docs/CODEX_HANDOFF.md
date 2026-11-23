@@ -1,3 +1,45 @@
+## 2026-11-23 GitHub 源码同步
+
+- 用户授权将更新后的工具提交并推送原仓库 main。范围：跨组长线／交叉整理、受限读取就近复制、可选Blueprint Assist桥接（含Widget函数识别）、测试与文档；不上传游戏资产、备份、引擎／第三方插件或预编译产物，不新建Release／标签。
+- 本次重新运行20项布局／readability测试及6项桥接语义测试，全部通过；新增三组测试纳入GitHub Actions，根README明确现有0.4.1附件不含新源码。此前UE5.7.4构建、原生画布及真实保存重载证据见前述记录，本次未重复引擎构建或PIE。
+- 后续实际批次：16函数调用BA，15布局变化保存、1无变化不重复保存，7资产累计逻辑及非目标图位置核对通过。个别函数交叉略增、断开旧链保留；Enum to String已接线输入未使用默认值的空／None重载差异通过确切节点单独复核，通用验证器未放宽。项目明细保存在项目Saved，未随源码上传。
+
+## 2026-11-23 Blueprint Assist Widget 函数编辑器识别
+
+- Parkour批量函数整理发现 WB_Base 的 Update Button Sate 在 OpenGraph 被旧的 BlueprintEditor 名称限制拒绝，失败未保存。根据 UE5.7 UMGEditor 的 FWidgetBlueprintEditor : FBlueprintEditor、GetToolkitFName 返回 WidgetBlueprintEditor，增加该确切类型白名单；没有接受任意编辑器或修改 BA 算法。
+- 通用源与 Parkour 安装源同步；UE5.7.4 Editor 增量构建成功。Widget函数原生画布预览、真实BA调用、逻辑核对、保存、独立重载编译均成功，0错误0警告。证据 Parkour Saved/BlueprintWorkbench/AssistFunctions20261123/07/{preview2,saved}，构建日志同批次 widget-bridge-build.log。没有调整Designer控件的工具操作。
+- 正确性与必要性复核：仅扩展已确认继承关系的编辑器名称判断，复用现有 JumpToHyperlink、BA缓存与排版、原语义验证链；未引入新的运行时依赖或放宽通用语义比较。未测试其他UE版本、PIE或设备；未提交／推送。
+
+## 2026-11-23 Blueprint Assist 编辑器桥接与 UpdateTurning 验证
+
+- 新增独立可选 BlueprintWorkbenchAssist（EditorNoCommandlet），通用源码位于 C:/Users/tangc/.codex/tools/blueprint-workbench/Plugins/BlueprintWorkbenchAssist，Parkour 安装于 C:/Users/tangc/.codex/tools/ue-project-tools/parkour/Plugins/BlueprintWorkbenchAssist。项目启用该插件；未修改 Blueprint Assist 源码、未替换项目定制 Workbench。
+- Scripts/Invoke-Assist.ps1 在完整编辑器中打开指定函数，等待真实 Slate 尺寸缓存，直接调用 Blueprint Assist FormatNodes。v0.1 限单入口函数图；先预览，再指定成功 PreviewDirectory 写回；备份、语义核对、编译、保存及独立进程重载均由入口串联。拒绝已有编辑器进程、过期预览及非目标图变化。
+- BP_AutoRunCharacter.UpdateTurning 已保存：77个既有节点移动，新增15个透明 reroute，91→106节点；未复制玩法节点或修改逻辑。核对透明转接后的终端引脚连接、类型、默认值与元数据，并验证其他图位置不变。仅归一化编译器生成的 InputKeyEvent 函数数字后缀，仍检查按键和处理函数前缀。
+- 估算直线交叉191→37，超过3000图坐标单位线段16→2；执行线超长6→0。仍有2条长数据线，最大数据线段约6292；这些指标不等同于原生样条交叉计数。已查看原生 Slate 整理前后画布，未以重绘示意图替代视觉检查。
+- UE5.7.4 Editor 构建通过，6项语义验证单元测试通过；preview6、saved1及独立重载均成功，蓝图编译0错误0警告。早期运行因设置反射名称、reroute尺寸等待及生成绑定后缀导致失败，均未保存；修复后重新验证成功。
+- 证据：Parkour Saved/BlueprintWorkbench/AssistUpdateTurning/preview6 与 saved1；saved1/result.json、reload.json、before.png、after.png。原资产备份为 saved1/BP_AutoRunCharacter.uasset。当前资产已经整理，后续须重新预览，不能直接重放旧写回请求。
+- 正确性审阅覆盖精确图定位→缓存→真实插件排版→语义验证→编译→保存→重载；必要性审阅确认复用现有 BA 算法及缓存，独立编辑器模块不耦合原 commandlet，无运行时新增系统。未验证 UE5.5、PIE、设备或打包；未提交／推送。
+
+## 2026-11-23 读取就近复制与交叉评分（仅工具）
+
+- 用户后续明确要求“先不用改蓝图了，就改工具”。本轮未调用Parkour资产编辑／保存，也未修改项目内文档或运行中插件二进制。通用源码及迁出的Parkour工具源码已更新；项目扩展DLL仍需以后关闭编辑器再构建，不能用通用DLL替换定制版。
+- 新增 `WorkbenchReadability.py`、presentation `mode=readability`，默认1200距离阈值、最多32副本。一读多用时保留最近消费者，远端消费者改接引擎认证的直接成员读取／Self副本。C++ Inspect增加localizable_read，新增local_read受限操作；拒绝任意纯函数、执行／Validated Get、BlueprintGetter、外部上下文、容器、拆分引脚和引用消费者。未认证旧导出不能触发复制。
+- 跨组及常规分组排版共同考虑估算交叉与长度，拒绝交叉增加的移动；readability进一步对纯节点在原注释归属内小范围挪位。若复制增加估算交叉，返回仅平移后备方案。指标为估算引脚间直线交叉，不等价于UE样条交叉，不含共线重叠。
+- 语义核对仅归一化声明的等价读取副本，然后核对原执行边、数据依赖、默认值和其他图；新增副本类型／引脚形状、预期位置与指标单独核对。不会以“纯函数”标签作为复制许可。
+- 验证：20项Python测试；独立WorkbenchHost UE5.7.4构建成功；新UE夹具中getter复制、Self复制、拒绝执行节点、编译、保存副本、独立进程重载语义核对和重编译预览通过（蓝图0错误0警告）；原TestWorkbench本轮55项通过。宿主启动有缺少ACL默认压缩资源警告，负向测试有预期不存在类型警告，不称全进程零警告。首次集成发现source_node未纳入字段白名单，修复重构建后通过。
+- 证据在 `C:/Users/tangc/.codex/tools/blueprint-workbench-validation/20261123-readability/`：build.log、integration.log、regression.log、reload.log、Saved/BlueprintWorkbench/readability-{integration,reload}.json。只使用隔离夹具资产。
+- 对上轮已导出的439节点快照离线规划：21.83秒、133位置操作、估算交叉60→30，无复制（旧快照不含认证字段）。没有重新读取／保存实际游戏蓝图；该结果不是资产落地或原生画布视觉验收。
+- 未验证5.5构建、运行中Parkour扩展二进制、原生Slate画布、PIE或设备；未提交、推送、发布。下次获准整理资产时先重构建外部定制插件、Inspect最新资产、预览并验证后再写回。
+
+## 2026-11-23 跨组长线排版修复
+
+- WorkbenchCrossGroup.py 新增全图二维连线审计、注释区域／相邻孤岛保形平移；原 plan 在组内排版后同时优化组间及组到固定外部节点连线。RunWorkbench 支持显式 cross_group 模式，输出剩余长线列表；不增删节点、不改引脚或连接。通用源修复已同步到 Parkour 公共扩展的两个排版模块，未覆盖插件和其他扩展。
+- BP_AutoRunCharacter.EventGraph 已保存：439节点中147个节点／注释框移动，65个保形组，409条连接保持。阈值3000图坐标单位：跨组超长16→1，跨组最长14242.24→3563.61；执行线超长13→0；全图超长17→2（剩余为数据线，其中一条组内）。全图逆向执行连接20→14；没有强行重接消除旧逆向线。
+- 15项排版单元测试通过；UE5.7.4 保持原类身份内存预览、原包备份保存、独立进程重载再编译均0错误0警告。逐图核对保留节点的类型、引脚、默认值、连接、变量和组件外部元数据；所有非目标图位置不变，目标组内相对位置不变。差异检查通过。无C++改动，未重跑引擎构建／PIE／打包／设备。
+- 普通复制预览因已知Self→In Pawn具体类型不兼容失败且未保存；切换项目已有PreviewSavedAssetPatch独立进程验证后通过。首次严格JSON整体相等检查受导出差异阻挡，改为逐节点语义及坐标前置核对后通过，没有忽略编译失败。
+- 证据：项目 Saved/BlueprintWorkbench/cross-group-{before,patch,plan,preview,save,reload}.json、*-verified.json、cross-group-comparison.png；复现脚本 ValidateCrossGroup.py（preview/save/reload分进程）和 RenderCrossGroup.py。备份：Saved/BlueprintWorkbench/Backups/CC914A03477D26EEFDEDDB9AD4C8F21A/BP_AutoRunCharacter.uasset。
+- 已目视几何预览；未打开原生UE画布进行Slate视觉验收。尺寸仍为估计，旧组内重叠未处理。当前资产已整理，不要直接重放依赖旧before快照的保存脚本；再次整理必须重新Inspect。未提交／推送。
+
 # Blueprint Workbench 交接
 
 更新：2026-11-20。

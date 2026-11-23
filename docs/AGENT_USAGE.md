@@ -10,3 +10,10 @@
 6. 分别报告已实现、编译、保存图重载、可视编辑器审阅、PIE 和设备验证。原资产备份及报告留在目标工程，不上传到工具仓库。
 
 工具手册位于 `Plugins/BlueprintWorkbench/README.md`，调用与测试脚本位于插件内 `Scripts/`。命令显式指定 ProjectFile 与 EngineRoot；Tools 下仅保留两个 PowerShell 转发入口。项目专用批量脚本留在对应项目，调用这里的通用接口。
+
+
+## 可读性验收补充
+
+- 一读多用且距离较远时，授权的可读性整理使用 `mode=readability`，优先考虑引擎认证的直接变量读取／Self就近副本；不能以 Pure 标志推断函数可复制。
+- 长线与交叉必须同时审查，查看 report 的 estimated_crossings、long_edges、copies、skipped；无法安全处理就明确保留，不通过复制执行节点或缓存变量改变语义。
+- 保留原有精确逻辑核对；读取副本必须通过专门等价归一化核对。几何交叉指标不是原生画布验收。仅改工具的任务不得顺带修改游戏资产。

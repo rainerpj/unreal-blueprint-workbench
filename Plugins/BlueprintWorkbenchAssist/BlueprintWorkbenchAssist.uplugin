@@ -1,0 +1,12 @@
+{
+  "FileVersion": 3,
+  "Version": 1,
+  "VersionName": "0.1.0",
+  "FriendlyName": "Blueprint Workbench - Blueprint Assist Bridge",
+  "Description": "Optional editor-only bridge to a separately installed Blueprint Assist. Never formats during commandlets.",
+  "Category": "Editor",
+  "EnabledByDefault": false,
+  "CanContainContent": false,
+  "Modules": [{"Name":"BlueprintWorkbenchAssist","Type":"EditorNoCommandlet","LoadingPhase":"PostEngineInit"}],
+  "Plugins": [{"Name":"BlueprintAssist","Enabled":true},{"Name":"BlueprintWorkbench","Enabled":true}]
+}
