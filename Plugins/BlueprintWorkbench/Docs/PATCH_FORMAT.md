@@ -14,6 +14,8 @@
 | move_node | graph、node、x、y；有限坐标，绝对值不大于 1,000,000，不改逻辑 |
 | remove_unused_nodes | graph、nodes；仅显式候选的保守删除。禁止入口／事件、潜伏节点、宏、时间轴与未知类型；不能跨删除集合边界切断消费者或外部执行／委托输入 |
 
+清理白名单还覆盖 Self、MakeStruct、Select、EnumEquality、SwitchInteger、CallDelegate、CreateDelegate、SpawnActorFromClass、CreateWidget，以及已支持函数调用节点的数学／数组／父函数／材质参数集合派生类型。仍须满足不可达及无外部消费者边界；多播委托输入同样受保护，不会因节点看似断开就删除事件或宏。
+
 | add_node kind | 补充字段与边界 |
 |---|---|
 | branch | 无额外字段 |

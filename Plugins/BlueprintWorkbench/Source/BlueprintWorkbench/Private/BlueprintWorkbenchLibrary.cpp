@@ -1,4 +1,10 @@
 #include "BlueprintWorkbenchLibrary.h"
+#include "K2Node_CreateDelegate.h"
+#include "K2Node_SpawnActorFromClass.h"
+#include "K2Node_CallDelegate.h"
+#include "K2Node_SwitchInteger.h"
+#include "K2Node_EnumEquality.h"
+#include "K2Node_Select.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
@@ -718,7 +724,7 @@ struct FPatch
                 if (!Existing) return false;
                 const bool bOrdinary = Cast<UK2Node_CallFunction>(Existing) || Cast<UK2Node_IfThenElse>(Existing) ||
                     Cast<UK2Node_VariableGet>(Existing) || Cast<UK2Node_VariableSet>(Existing) || Cast<UK2Node_DynamicCast>(Existing) ||
-                    Cast<UK2Node_Knot>(Existing) || Cast<UK2Node_BreakStruct>(Existing) || Cast<UK2Node_GetEnumeratorNameAsString>(Existing);
+                    Cast<UK2Node_Knot>(Existing) || Cast<UK2Node_BreakStruct>(Existing) || Cast<UK2Node_GetEnumeratorNameAsString>(Existing) || Cast<UK2Node_Self>(Existing) || Cast<UK2Node_MakeStruct>(Existing) || Cast<UK2Node_Select>(Existing) || Cast<UK2Node_EnumEquality>(Existing) || Cast<UK2Node_SwitchInteger>(Existing) || Cast<UK2Node_CallDelegate>(Existing) || Cast<UK2Node_CreateDelegate>(Existing) || Cast<UK2Node_SpawnActorFromClass>(Existing) || Existing->GetClass()->GetPathName() == TEXT("/Script/UMGEditor.K2Node_CreateWidget");
                 if (!bOrdinary) return Reject(TEXT("Removal excludes entries, events, timelines, macros and unknown nodes"));
                 if (UK2Node_CallFunction* Call = Cast<UK2Node_CallFunction>(Existing))
                 {
@@ -731,7 +737,7 @@ struct FPatch
                 for (UEdGraphPin* Pin : Existing->Pins)
                     for (UEdGraphPin* Link : Pin->LinkedTo)
                         if (!Removal.Contains(Link->GetOwningNode()) && (Pin->Direction == EGPD_Output ||
-                            Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec || Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Delegate))
+                            Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec || Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Delegate || Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_MCDelegate))
                             return Reject(TEXT("Removal set has a live boundary connection; nothing removed"));
             for (UEdGraphNode* Existing : Removal)
             {

@@ -4,7 +4,16 @@ import copy
 from WorkbenchCrossGroup import audit, compact
 
 COMMENT='/Script/UnrealEd.EdGraphNode_Comment'
-ORDINARY={'K2Node_CallFunction','K2Node_IfThenElse','K2Node_VariableGet','K2Node_VariableSet','K2Node_DynamicCast','K2Node_Knot','K2Node_BreakStruct','K2Node_GetEnumeratorNameAsString'}
+ORDINARY={
+    'K2Node_CreateDelegate','K2Node_SpawnActorFromClass','K2Node_CreateWidget',
+    'K2Node_Self','K2Node_MakeStruct','K2Node_Select',
+    'K2Node_EnumEquality','K2Node_SwitchInteger','K2Node_CallDelegate',
+    'K2Node_CallArrayFunction','K2Node_CallParentFunction','K2Node_CallMaterialParameterCollectionFunction',
+    'K2Node_PromotableOperator','K2Node_CommutativeAssociativeBinaryOperator','K2Node_CallFunction',
+    'K2Node_IfThenElse','K2Node_VariableGet','K2Node_VariableSet',
+    'K2Node_DynamicCast','K2Node_Knot','K2Node_BreakStruct',
+    'K2Node_GetEnumeratorNameAsString'
+}
 
 def ordinary(n):
     return n['class'].rsplit('.',1)[-1] in ORDINARY and not n.get('latent',False)

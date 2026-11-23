@@ -11,6 +11,8 @@
 | WorkbenchLifecycle.register_copy／finalize | 中间副本登记、独立重载核对、引用检查后清理 | Scripts/WorkbenchLifecycle.py | RunWorkbench.py、FinalizeWorkbench.py、TestWorkbenchReload.py |
 | WorkbenchPresentation.plan／verify_logic／verify_presentation | 显式分组布局、注释、候选清理及语义核对 | Scripts/WorkbenchPresentation.py | RunWorkbench.py、TestPresentation.py |
 | BlueprintWorkbenchAssistLibrary / Invoke-Assist | 可选的完整编辑器桥接；调用 Blueprint Assist 整理指定函数图，转接点透明等价验证，预览／备份／独立重载 | ../BlueprintWorkbenchAssist/Source、Scripts | RunAssist.py、FinalizeAssist.py；UpdateTurning 验证见交接 |
+| BatchPlanning.graph_roots | 按已清理基线发现函数／事件／宏入口及独立Timeline链；不把pure提示用于排除输入事件 | ../BlueprintWorkbenchAssist/Scripts/BatchPlanning.py | 全项目补充清理规划及独立覆盖率核对；TestBatchPlanning |
+| Assist.FormatGraphRoot / RemoveUnusedNodes / RestoreFormattingDefaults | 显式批量 K2 入口整理、保守无用节点清理、原始引脚默认字符串恢复；不保存 | ../BlueprintWorkbenchAssist/Source | RunBatchAssist.py；FinalizeBatchAssist.py 独立重载 |
 | Install／New-ValidationHost | 不覆盖安装；生成独立版本宿主 | Scripts/*.ps1 | 安装说明；本轮独立宿主实际使用记录见兼容矩阵 |
 | Build-BlueprintWorkbenchPackage／Install | UAT 生成 Win64 包；FilterPlugin 保留脚本与文档；WorkbenchBuild 与引擎 BuildId 匹配后安装预编译文件 | Scripts/Build-BlueprintWorkbenchPackage.ps1、Install-BlueprintWorkbench.ps1、Config/FilterPlugin.ini | README 预编译安装命令；纯蓝图宿主分发验证 |
 

@@ -1,3 +1,15 @@
+## 2026-11-23 本地提交
+
+- 用户授权提交本轮批处理、无用节点识别、验证器、测试及文档更新。仅提交到本地，未推送远端；下文未提交状态为当时记录。
+
+## 2026-11-23 全项目清理与 Blueprint Assist 批处理验收
+
+- 新增RunBatchAssist.py、BatchPlanning.py、BatchVerification.py、FinalizeBatchAssist.py及测试；原生桥接支持逐K2入口FormatNodes、Anim／Widget和data-only编辑器、显式安全删除、恢复原始引脚默认字符串。白名单同步WorkbenchPresentation与原生删除实现，扩充CreateDelegate／SpawnActorFromClass／CreateWidget等已证明不可达节点识别，仍保护未知、潜伏和外部入口。
+- 每资产内存预览、编译和全图语义检查通过后备份保存；独立进程重新加载并核对保存几何和编译。BatchPlanning独立核对清理后仍有用的入口覆盖。通用单函数AssistVerification未放宽；批次只受限归一化有源码证据的已连线未使用默认值、旧字面值标记和不同实体键绑定顺序，详细限制见插件README。
+- Parkour UE5.7.4构建通过；24项清理／排版测试、15项桥接测试通过。真实整合扫描317蓝图及36地图的15关卡蓝图，清理61资产1107节点，191资产1033图1698入口整理（成功保存批次1723调用）。200资产保存，全部独立重载编译0错误0警告，332快照累计逻辑核对通过、遗漏入口与安全清理候选均0。
+- 完整编辑器只读扫描退出异常未当成功；重新执行NullRHI只读commandlet全量扫描退出0。保留全部失败日志。证据位于Parkour Saved/BlueprintWorkbench/ProjectCleanup20261123/RESULTS.md及final-verification.json，不随通用工具发布。
+- 保留接口、ControlRig及非K2专用图、潜在外部空入口；未做PIE／设备／打包。源与Parkour定制安装按文件同步，未覆盖定制基座。当前任务未提交／推送；此前f2771e9的远端同步记录保留。
+
 ## 2026-11-23 GitHub 源码同步
 
 - 用户授权将更新后的工具提交并推送原仓库 main。范围：跨组长线／交叉整理、受限读取就近复制、可选Blueprint Assist桥接（含Widget函数识别）、测试与文档；不上传游戏资产、备份、引擎／第三方插件或预编译产物，不新建Release／标签。

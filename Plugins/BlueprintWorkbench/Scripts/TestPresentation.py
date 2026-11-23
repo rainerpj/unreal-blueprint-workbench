@@ -18,6 +18,35 @@ class PresentationTests(unittest.TestCase):
         self.d=node('dead','K2Node_IfThenElse');self.f=node('old_call')
         connect(self.e,self.b);connect(self.b,self.c);connect(self.v,self.b,'bool','value','Condition');connect(self.v,self.d,'bool','value','Condition');connect(self.d,self.f)
         self.nodes={n['id']:n for n in [self.e,self.b,self.c,self.v,self.d,self.f]}
+    def test_inherited_math_calls_follow_same_liveness_rules(self):
+        for kind in ('K2Node_PromotableOperator','K2Node_CommutativeAssociativeBinaryOperator'):
+            math=node('math',kind,True);ns={'math':math}
+            self.assertEqual(unused_candidates(ns,ns),{'math'})
+            event=node('event','K2Node_CustomEvent');call=node('consumer')
+            connect(event,call);connect(math,call,'int','result','value')
+            ns.update(event=event,consumer=call)
+            self.assertFalse(unused_candidates(ns,ns))
+    def test_unused_value_chain_keeps_shared_producer(self):
+        selfref=node('self','K2Node_Self',True);struct=node('struct','K2Node_MakeStruct',True)
+        select=node('select','K2Node_Select',True);call=node('consumer');event=node('event','K2Node_CustomEvent')
+        connect(selfref,struct,'object','self','owner');connect(struct,select,'struct','result','option')
+        ns={n['id']:n for n in [selfref,struct,select,call,event]}
+        connect(event,call);connect(selfref,call,'object','self','target')
+        self.assertEqual(unused_candidates(ns,ns),{'struct','select'})
+    def test_dispatcher_boundary_prevents_pruning(self):
+        owner=node('owner','K2Node_CustomEvent');call=node('broadcast','K2Node_CallDelegate')
+        ns={'owner':owner,'broadcast':call}
+        self.assertEqual(unused_candidates(ns,ns),{'broadcast'})
+        connect(owner,call,'mcdelegate','delegate','target')
+        self.assertFalse(unused_candidates(ns,ns))
+    def test_unused_delegate_and_constructors_require_no_live_consumer(self):
+        for kind in ('K2Node_CreateDelegate','K2Node_SpawnActorFromClass','K2Node_CreateWidget'):
+            source=node('source',kind);consumer=node('consumer');event=node('event','K2Node_CustomEvent')
+            connect(source,consumer,'delegate' if kind=='K2Node_CreateDelegate' else 'object','value','value')
+            ns={n['id']:n for n in (source,consumer,event)}
+            self.assertEqual(unused_candidates(ns,ns),{'source','consumer'})
+            connect(event,consumer)
+            self.assertFalse(unused_candidates(ns,ns))
     def test_only_dead_scoped_chain_removed(self):
         self.assertEqual(unused_candidates(self.nodes,set(self.nodes)),{'dead','old_call'})
     def test_live_data_and_events_retained(self):
