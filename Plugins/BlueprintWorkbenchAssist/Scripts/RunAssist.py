@@ -8,6 +8,7 @@ import traceback
 from pathlib import Path
 import unreal
 sys.path.insert(0,str(Path(__file__).resolve().parent))
+from AssistSettings import override_setting
 from AssistVerification import verify_blueprint
 
 request=json.loads(Path(os.environ['WORKBENCH_ASSIST_REQUEST']).read_text(encoding='utf-8-sig'))
@@ -34,6 +35,10 @@ def inspect():return checked(lib.inspect_blueprint(asset))['blueprint']
 
 def finish():
     if handle is not None:unreal.unregister_slate_post_tick_callback(handle)
+    # Release the Blueprint toolkit while the editor world is still alive.
+    # Leaving it open until engine shutdown can assert in UE 5.5 Kismet teardown.
+    loaded=unreal.find_object(None,asset)
+    if loaded is not None:unreal.get_editor_subsystem(unreal.AssetEditorSubsystem).close_all_editors_for_asset(loaded)
     for obj,key,value in settings:obj.set_editor_property(key,value)
     write('result.json',report)
     unreal.SystemLibrary.quit_editor()
@@ -50,7 +55,7 @@ def tick(delta):
                            (unreal.load_class(None,'/Script/UnrealEd.EditorLoadingSavingSettings'),{'bAutoSaveEnable':False})]:
             obj=unreal.get_default_object(cls)
             for key,value in values.items():
-                settings.append((obj,key,obj.get_editor_property(key)));obj.set_editor_property(key,value)
+                override_setting(settings,obj,key,value)
         before=inspect();state['before']=before;write('before.json',before)
         if request.get('writeback'):
             preview=Path(request['preview'])

@@ -67,12 +67,22 @@ UEdGraph* FindGraph(UBlueprint* Blueprint, const FString& Path)
         if (Graph->GetPathName(Blueprint) == Path) return Graph;
     return nullptr;
 }
+// BA 4.5 exposes all graph handlers; BA 4.2 exposes only the active one.
+// OpenGraph focuses the requested document, and Handler still checks its exact graph.
+template<typename T> auto GraphHandlers(T& Tabs, int) -> decltype(Tabs.GetAllGraphHandlers())
+{
+    return Tabs.GetAllGraphHandlers();
+}
+template<typename T> TArray<TSharedPtr<FBAGraphHandler>> GraphHandlers(T& Tabs, long)
+{
+    return { Tabs.GetActiveGraphHandler() };
+}
 TSharedPtr<FBAGraphHandler> Handler(const FString& Asset, const FString& Path)
 {
     UBlueprint* Blueprint = LoadObject<UBlueprint>(nullptr, *Asset);
     UEdGraph* Graph = FindGraph(Blueprint, Path);
     if (!Graph || IsRunningCommandlet()) return nullptr;
-    for (TSharedPtr<FBAGraphHandler> Candidate : FBATabHandler::Get().GetAllGraphHandlers())
+    for (TSharedPtr<FBAGraphHandler> Candidate : GraphHandlers(FBATabHandler::Get(), 0))
         if (Candidate.IsValid() && Candidate->GetFocusedEdGraph() == Graph) return Candidate;
     return nullptr;
 }

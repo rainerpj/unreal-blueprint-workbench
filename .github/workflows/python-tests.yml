@@ -15,6 +15,7 @@ jobs:
       - run: python -m unittest discover -s Plugins/BlueprintWorkbenchAssist/Scripts -p TestAssistVerification.py -v
       - run: python -m unittest discover -s Plugins/BlueprintWorkbenchAssist/Scripts -p TestBatchVerification.py -v
       - run: python -m unittest discover -s Plugins/BlueprintWorkbenchAssist/Scripts -p TestBatchPlanning.py -v
+      - run: python -m unittest discover -s Plugins/BlueprintWorkbenchAssist/Scripts -p TestAssistSettings.py -v
 
   distribution:
     runs-on: windows-latest
@@ -23,3 +24,6 @@ jobs:
       - name: Check source and precompiled installation contracts
         shell: pwsh
         run: ./Plugins/BlueprintWorkbench/Scripts/Test-Distribution.ps1
+      - name: Check bridge installation contracts
+        shell: pwsh
+        run: ./Plugins/BlueprintWorkbenchAssist/Scripts/Test-AssistDistribution.ps1

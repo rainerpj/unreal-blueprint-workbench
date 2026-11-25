@@ -2,6 +2,14 @@
 
 更新：2026-11-25。维护仓库为 rainerpj/unreal-blueprint-workbench；当前版本为0.5.0，新增功能及UE5.5／5.7预编译分发的验证范围见兼容矩阵；旧0.4.1附件不包含本轮新增能力。
 
+## 0.5.0 桥接补充分发
+
+BlueprintWorkbenchAssist新增UE5.5.4／5.7.4 Win64预编译包、独立源码包及安装器，分别匹配用户另行安装的Blueprint Assist 4.2.22／4.5.3；不分发第三方源码、DLL或许可证。安装顺序、依赖矩阵、隐藏后台调用与源码版本追溯见桥接README。原v0.5.0核心标签和核心附件不变，桥接补充源码以附件清单中的提交为准。
+
+两版UAT构建成功；独立纯蓝图宿主分别通过单函数预览、真实BA格式化、语义核对、PNG审阅、备份写回和独立重载，进程正常退出，编译／重载均0错误0警告。19项Python检查和5项合成安装契约通过，新增检查接入CI。完整日志、测试资产与备份仅存本地；公开精简摘要见兼容矩阵。未重新覆盖复杂批次、PIE、游戏打包、设备或干净机器。
+
+正确性复核覆盖Build-AssistPackage→Install-Assist、依赖版本／BuildId、项目字段保留／备份／拒绝覆盖、GraphHandlers精确图匹配、可选设置恢复及runner退出顺序；必要性复核确认复用原生BA与现有语义验证，不另建布局算法。处理了BA4.2缺少GetAllGraphHandlers和bFormatAllAfterSaving，以及UE5.5蓝图toolkit晚于world销毁的退出断言。收尾仅关闭本次隔离会话的目标资产编辑器，不保存失败预览。最小commandlet宿主不能直接作为完整Slate宿主使用；本轮完整编辑器测试启用正常引擎默认插件，未改游戏项目配置。
+
 ## 后台整理工作流（0.5.0发布后文档更新）
 
 蓝图连线／节点格式化默认通过隐藏的 BlueprintWorkbenchAssist 完整编辑器桥接执行，不使用 Computer Use 或模拟键鼠；桥接失败先排查依赖／构建，不自动切换UI或其他布局算法。调用约定见 docs/AGENT_USAGE.md 和桥接README。已核对 Invoke-Assist 的隐藏／RenderOffscreen启动及批量脚本入口；此轮仅同步指令文档，未改代码或资产、未重复运行引擎测试，未重打已有Release附件。

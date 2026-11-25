@@ -5,6 +5,7 @@ import copy,json,os,shutil,sys,time,traceback
 from pathlib import Path
 import unreal
 sys.path.insert(0,str(Path(__file__).resolve().parent))
+from AssistSettings import override_setting
 from BatchVerification import verify_batch
 req=json.loads(Path(os.environ['WORKBENCH_BATCH_REQUEST']).read_text(encoding='utf-8-sig'))
 out=Path(req['output'])
@@ -30,6 +31,10 @@ def stage(name):
     state.update(stage=name,at=time.monotonic());write(out/'progress.json',{'stage':name,'asset':state.get('item',{}).get('asset'),'index':state['index'],'graph':state.get('graph',{}).get('path'),'root_index':state.get('ri')})
 def finish():
     if handle is not None:unreal.unregister_slate_post_tick_callback(handle)
+    # Failure can leave the current toolkit open; close it before world teardown.
+    if 'item' in state:
+        loaded=unreal.find_object(None,state['item']['asset'])
+        if loaded is not None:unreal.get_editor_subsystem(unreal.AssetEditorSubsystem).close_all_editors_for_asset(loaded)
     for obj,key,value in settings:obj.set_editor_property(key,value)
     write(out/'results.json',reports);unreal.SystemLibrary.quit_editor()
 def next_asset():
@@ -71,7 +76,7 @@ def tick(delta):
         if age<2:return
         for cls,values in [('/Script/BlueprintAssist.BASettings',{'bGloballyDisableAutoFormatting':True,'bAlwaysFormatAll':False,'bFormatAllAfterSaving':False}),('/Script/UnrealEd.EditorLoadingSavingSettings',{'bAutoSaveEnable':False})]:
             obj=unreal.get_default_object(unreal.load_class(None,cls))
-            for key,value in values.items():settings.append((obj,key,obj.get_editor_property(key)));obj.set_editor_property(key,value)
+            for key,value in values.items():override_setting(settings,obj,key,value)
         next_asset();return
     asset=state['item']['asset'];d=state['dir']
     if s=='handler':

@@ -9,7 +9,7 @@
 - 跨组长线与估算交叉检查、保形平移，以及受限的成员读取／Self就近复制；用法见[插件手册](Plugins/BlueprintWorkbench/README.md)。
 - 可选 [Blueprint Assist 编辑器桥接](Plugins/BlueprintWorkbenchAssist/README.md)：直接调用另行安装的 Blueprint Assist 整理指定函数，另提供显式函数／事件／宏入口批次、保守无用节点清理和独立重载；支持普通／Widget及动画蓝图中的 K2 逻辑图，保留预览、逻辑核对和备份。
 
-这些功能纳入 0.5.0；旧 0.4.1 Release 附件不包含它们。桥接已在 UE 5.7.4 验证；不附带 Blueprint Assist 源码、二进制或许可证，需自行安装兼容版本。新增能力的验证范围见交接记录，不沿用旧版本的全部兼容性结论。
+这些功能纳入 0.5.0；旧 0.4.1 Release 附件不包含它们。桥接另有UE5.5.4／5.7.4预编译附件，安装顺序和依赖版本见[桥接手册](Plugins/BlueprintWorkbenchAssist/README.md)；不附带第三方Blueprint Assist源码、二进制或许可证，需自行安装匹配版本。新增能力的验证范围见交接记录，不沿用旧版本的全部兼容性结论。
 
 ## 安装与使用
 

@@ -1,5 +1,16 @@
 # 兼容矩阵
 
+## 2026-11-25：0.5.0 BlueprintWorkbenchAssist 补充附件
+
+| Win64桥接 | 必须自行安装的Blueprint Assist | 验证 |
+|---|---|---|
+| UE5.5.4／BuildId 37670630 | 4.2.22 | UAT构建、后台单函数预览、备份写回、正常退出、独立重载通过 |
+| UE5.7.4／BuildId 47537391 | 4.5.3 | UAT构建、后台单函数预览、备份写回、正常退出、独立重载通过 |
+
+两版依赖核心BlueprintWorkbench>=0.5.0；均在同机独立纯蓝图宿主验证，保持逻辑与其他图几何不变，目标图移动2个节点，编译／重载0错误0警告。另有19项Python检查、5项合成安装契约通过。安装说明和依赖限制见[桥接README](../../BlueprintWorkbenchAssist/README.md)，精简证据见[桥接分发摘要](validation/2026-11-25-assist-release-summary.json)。完整编辑器保留正常引擎默认插件，不直接沿用禁用默认引擎插件的commandlet最小宿主。未验收干净机器、其他BA版本、复杂批次、PIE、游戏打包和设备。
+
+v0.5.0 Release另附桥接两版预编译ZIP和源码ZIP；不包含第三方Blueprint Assist。原核心标签／核心附件不变，补充源码提交记录在桥接附件内。
+
 ## 2026-11-25：0.5.0 预编译分发
 
 UE5.5.4（BuildId 37670630）与 UE5.7.4（BuildId 47537391）的 Win64 包均通过 UAT BuildPlugin；从 ZIP 安装到全新纯蓝图宿主，各124项集成检查及7项CLI检查通过。

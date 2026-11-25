@@ -46,7 +46,7 @@
 
 ## 蓝图连线整理默认方式
 
-节点／连线格式化默认使用独立的 BlueprintWorkbenchAssist 后台桥接，不使用 Computer Use、模拟F键或拖动画布。单函数使用桥接的 `Scripts/Invoke-Assist.ps1`；批量使用 `RunBatchAssist.py`／`FinalizeBatchAssist.py`。桥接启动隐藏的完整编辑器并使用 `-RenderOffscreen`，依赖真实Slate，不能以commandlet／NullRHI代替格式化。保留预览、语义核对、备份、授权写回和独立重载；桥接不可用时先处理依赖／构建，不自动回退UI操作。核心预编译包不含此可选桥接或第三方Blueprint Assist。
+节点／连线格式化默认使用独立的 BlueprintWorkbenchAssist 后台桥接，不使用 Computer Use、模拟F键或拖动画布。单函数使用桥接的 `Scripts/Invoke-Assist.ps1`；批量使用 `RunBatchAssist.py`／`FinalizeBatchAssist.py`。桥接启动隐藏的完整编辑器并使用 `-RenderOffscreen`，依赖真实Slate，不能以commandlet／NullRHI代替格式化。保留预览、语义核对、备份、授权写回和独立重载；桥接不可用时先处理依赖／构建，不自动回退UI操作。核心预编译包不含桥接；v0.5.0 Release另提供匹配引擎的BlueprintWorkbenchAssist预编译附件。第三方Blueprint Assist仍须自行安装，依赖版本及安装步骤见[桥接手册](https://github.com/rainerpj/unreal-blueprint-workbench/tree/main/Plugins/BlueprintWorkbenchAssist)。
 
 ## 使用
 

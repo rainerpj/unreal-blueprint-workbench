@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-25",
+  "plugin": "BlueprintWorkbenchAssist",
+  "version": "0.5.0",
+  "release_kind": "supplement_to_existing_core_tag",
+  "third_party_blueprint_assist_redistributed": false,
+  "hosts": [
+    {"engine": "5.5.4", "build_id": "37670630", "blueprint_assist": "4.2.22"},
+    {"engine": "5.7.4", "build_id": "47537391", "blueprint_assist": "4.5.3"}
+  ],
+  "per_host_checks": {
+    "uat_build_plugin": "passed",
+    "blueprint_only_host_install": "passed",
+    "hidden_render_offscreen_preview": "passed",
+    "logic_preserved": true,
+    "other_graphs_unchanged": true,
+    "moved_existing_nodes": 2,
+    "native_png_review": "passed",
+    "backup_and_writeback": "passed",
+    "editor_exit_code": 0,
+    "independent_saved_reload": "passed",
+    "compile_errors": 0,
+    "compile_warnings": 0
+  },
+  "python_tests_passed": 19,
+  "synthetic_installer_contracts_passed": 5,
+  "not_verified": ["clean machine", "other Blueprint Assist versions", "complex batches in this release pass", "PIE", "game packaging", "devices", "other platforms"],
+  "raw_evidence": "Local only; logs, backup assets and test hosts are excluded from distribution."
+}
