@@ -1,0 +1,28 @@
+{
+  "date": "2026-11-25",
+  "features": [
+    "signature local default",
+    "set_local_default",
+    "set_call_in_editor",
+    "add_node make_array",
+    "inspection and presentation metadata protection"
+  ],
+  "ue_5_5_4": {
+    "build": "passed",
+    "integration_checks": 81,
+    "independent_reload": "passed"
+  },
+  "python_presentation_tests": 13,
+  "ue_5_7_4": {
+    "build": "blocked",
+    "reason": "MarketplaceRules.dll is held by another process; new binary not validated"
+  },
+  "not_verified": [
+    "native editor Details UI",
+    "PIE",
+    "game packaging",
+    "device"
+  ],
+  "delivery": "local source changes only; no commit, push, release or game-project plugin replacement",
+  "evidence_note": "Historical validation snapshot; full logs and backups retained locally. Latest results are in 2026-11-25-vector-fix-summary.json."
+}

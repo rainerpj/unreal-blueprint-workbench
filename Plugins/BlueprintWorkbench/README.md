@@ -2,7 +2,7 @@
 
 本插件代码采用 [MIT 许可证](LICENSE)。Unreal Engine 本身不包含在本授权中。
 
-独立 UE Editor 源码插件：用 JSON 补丁检查、编辑普通 Blueprint 和 Widget Blueprint 的 K2 逻辑图。通过 UE Python／PowerShell 调用，不依赖 Parkour、联网服务或 Computer Use，不增加游戏运行时模块。
+独立 UE Editor 源码插件：用 JSON 补丁检查、编辑普通 Blueprint 和 Widget Blueprint 的 K2 逻辑图。通过 UE Python／PowerShell 调用，不依赖 定制宿主、联网服务或 Computer Use，不增加游戏运行时模块。
 
 当前版本验收结果见 [兼容矩阵](Docs/COMPATIBILITY.md)；工作交接见 [CODEX_HANDOFF.md](Docs/CODEX_HANDOFF.md)。不同 UE 小版本需要分别构建，不能混用插件 DLL 或将高版本测试资产降级打开。
 
@@ -87,7 +87,7 @@ preview = json.loads(lib.apply_patch('/Game/Blueprints/BP_Player', json.dumps({'
 
 `success` 表示请求成功，`compiled` 表示执行过编译，`compile_errors`／`compile_warnings` 是编译诊断，`saved` 表示实际保存成功。不能只凭 `compiled=true` 判断通过。成功输出包含图、节点、引脚、源节点 GUID 映射及新增别名；编译可能重建动态引脚，后续编辑应重新 Inspect。
 
-支持范围及格式见 [PATCH_FORMAT.md](Docs/PATCH_FORMAT.md)。不支持 Material、Niagara、Anim Blueprint、蓝图接口／宏库／函数库编辑；不提供通用 UMG Designer 编辑、任意节点删除、自动引用替换或自动插入转换节点。普通 Blueprint 中相关资产的函数调用不等于修改这些资产内部图。
+支持范围及格式见 [PATCH_FORMAT.md](Docs/PATCH_FORMAT.md)。支持普通蓝图、函数库及接口创建／编辑（接口仅签名）；不支持 Material、Niagara、Anim Blueprint、宏库编辑；不提供通用 UMG Designer 编辑、任意节点删除、自动引用替换或自动插入转换节点。普通 Blueprint 中相关资产的函数调用不等于修改这些资产内部图。
 
 ## 验证与交付
 
@@ -128,7 +128,7 @@ To compact an existing graph without rebuilding its internal layout, use a prese
 
 Existing comment regions and nearby ungrouped connected islands are translated rigidly. Because Inspect does not export authoritative comment membership, automatic groups use spatial containment; review the generated `.plan.json`. Alternatively supply `groups` as disjoint arrays of node IDs and `movable` as their zero-based indices. Nodes omitted from explicit groups are fixed when `movable` is supplied. No topology edits, reroutes, deletion, or comment text changes occur in this mode. Accepted moves reduce a combined crossing/length score, do not increase estimated crossings, avoid estimated block overlaps, and do not increase the original maximum cross-wire length. Existing internal overlaps and long internal wires remain unchanged.
 
-The report's `.presentation.json` records whole-graph before/after metrics and unresolved long edges. Node dimensions are estimates, not Slate measurements; a geometric preview is not native-editor visual acceptance. Blueprints with concrete self-type references may fail ordinary duplicate-class previews; hosts that expose `PreviewSavedAssetPatch` must preflight in a separate process before saving, as in the Parkour validation script. Do not ignore preview compiler errors or save in the same in-memory preview process.
+The report's `.presentation.json` records whole-graph before/after metrics and unresolved long edges. Node dimensions are estimates, not Slate measurements; a geometric preview is not native-editor visual acceptance. Blueprints with concrete self-type references may fail ordinary duplicate-class previews; hosts that expose `PreviewSavedAssetPatch` must preflight in a separate process before saving, as in the 定制宿主 validation script. Do not ignore preview compiler errors or save in the same in-memory preview process.
 
 
 ### Readability rules: local reads and crossing reduction
@@ -148,3 +148,7 @@ For an explicitly authorized graph-wide readability pass, use:
 Requires rebuilt plugin code for `localizable_read` inspection and `add_node(kind=local_read, source_node=...)`. Old plugin exports do not certify nodes and therefore cannot enable copying silently. Do not hot-replace a loaded editor DLL. Source updates are not deployment of a running project's binary.
 
 Tests: `python -m unittest TestPresentation TestCrossGroup TestReadability`; isolated `WorkbenchHost` UE scripts `TestReadabilityUE.py` and then `TestReadabilityReload.py`. Never point fixture tests at a production project. Actual Slate visual quality still needs editor inspection on a future authorized asset pass.
+
+### main 分支新增的创作能力
+
+函数库／接口／普通蓝图创建、统一容器与引用类型、成员及局部默认值、函数属性、带参数事件和 Dispatcher、接口实现／消息、常用控制流节点、动态／拆分引脚及受控重命名／替换均从现有补丁流程进入。用法见 [PATCH_FORMAT](Docs/PATCH_FORMAT.md)，跨资产测试为 TestAdvancedWorkbench.py 与 TestAdvancedWorkbenchReload.py。旧 0.4.1 Release 附件不包含这些未发布源码更新。

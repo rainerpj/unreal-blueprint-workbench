@@ -11,6 +11,9 @@ report_dir = root / "Saved" / "BlueprintWorkbench"
 manifest = json.loads((report_dir / "test-manifest.json").read_text(encoding="utf-8"))
 result = json.loads(unreal.BlueprintWorkbenchLibrary.inspect_blueprint(manifest["destination"]))
 assert result["success"], result
+from TestWorkbenchFeatures import verify_features
+verify_features(result['blueprint'], count='9')
+manifest['checks'].append('local defaults editor flags and Make Array survive save writeback and independent reload')
 assert {v["name"] for v in result["blueprint"]["variables"]} == {"WorkbenchFlag", "RoundIdentity"}
 graph = next(g for g in result["blueprint"]["graphs"] if g["name"] == "EventGraph")
 assert any(p["links"] for n in graph["nodes"] for p in n["pins"]), "Saved connections lost"
@@ -23,6 +26,7 @@ manifest['checks'].append('comment details survive save, writeback and fresh-pro
 
 compiled = json.loads(unreal.BlueprintWorkbenchLibrary.apply_patch(manifest["destination"], '{"operations": []}'))
 assert compiled["success"] and compiled["compile_errors"] == 0, compiled
+verify_features(compiled['blueprint'], count='9')
 assert any(n.get('details')=='Saved details: 中文说明' for g in compiled['blueprint']['graphs'] for n in g['nodes'])
 manifest['checks'].append('reloaded comment details survive another duplicate preview')
 

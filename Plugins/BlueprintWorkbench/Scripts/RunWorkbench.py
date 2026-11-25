@@ -32,7 +32,11 @@ if request.get('presentation'):
     else:
         verify_logic(before,preview,set(description['removed']))
         verify_presentation(before,preview,payload,description)
-if request["action"] == "inspect":
+if request["action"] == "create":
+    result = library.create_blueprint(request['kind'], request.get('parent','/Script/Engine.Actor'), json.dumps(request.get('patch',{'operations':[]})), request.get('destination',''))
+elif request["action"] == "references":
+    result = library.find_member_references(request['asset'], request['member'])
+elif request["action"] == "inspect":
     result = library.inspect_blueprint(request["asset"])
 elif request["action"] == "patch":
     if request.get('temporary_copy'):

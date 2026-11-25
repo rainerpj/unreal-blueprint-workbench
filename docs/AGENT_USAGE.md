@@ -17,3 +17,7 @@
 - 一读多用且距离较远时，授权的可读性整理使用 `mode=readability`，优先考虑引擎认证的直接变量读取／Self就近副本；不能以 Pure 标志推断函数可复制。
 - 长线与交叉必须同时审查，查看 report 的 estimated_crossings、long_edges、copies、skipped；无法安全处理就明确保留，不通过复制执行节点或缓存变量改变语义。
 - 保留原有精确逻辑核对；读取副本必须通过专门等价归一化核对。几何交叉指标不是原生画布验收。仅改工具的任务不得顺带修改游戏资产。
+
+## 资产创作与受控重构
+
+函数库／接口／普通蓝图新建使用 CreateBlueprint 或 CLI -CreateKind；先预览，再明确 DestinationPackage，CLI 保存后独立重载验证。signature 的 entry_id/result_id 可用于同补丁接线。类型、默认值及新节点格式以 PATCH_FORMAT.md 为准。修改公共签名前先 FindMemberReferences/Inspect，按报告显式更新每个定义、实现与调用资产；refresh_interfaces 与 refresh_calls 不会替用户自动写回其他资产。引用扫描仅覆盖已保存包与支持的K2成员引用，不能把零匹配当作无任何外部依赖。

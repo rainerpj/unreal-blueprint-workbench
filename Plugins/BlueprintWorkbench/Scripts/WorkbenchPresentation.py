@@ -156,6 +156,11 @@ def verify_logic(before,result,removed):
             if n['id'] in removed:continue
             target=actual[mapped(n['id'])]
             assert n['class']==target['class'],n['title']
+            for field in ('local_variables','call_in_editor','function_flags','category','tooltip','event_override','event_name','event_owner'):
+                if field in n:
+                    import json
+                    expected=json.loads(json.dumps(n[field]).replace(before['asset'],after['asset']))
+                    assert expected==target.get(field),('changed function metadata',bg['path'],n['title'],field)
             def pins(node,translate):
                 values=[]
                 for p in node['pins']:
@@ -174,7 +179,7 @@ def verify_logic(before,result,removed):
                 return sorted(values,key=lambda p:(p['name'],p['direction']))
             assert pins(n,True)==pins(target,False),('changed logic',bg['path'],n['title'])
         assert all(mapped(nid) not in actual for nid in removed if any(n['id']==nid for n in bg['nodes']))
-    for field in ('variables','widgets','widget_bindings','widget_animations','parent'):
+    for field in ('variables','widgets','widget_bindings','widget_animations','parent','interfaces','blueprint_type'):
         if field in before:
             import json
             expected=json.loads(json.dumps(before[field]).replace(before['asset'],after['asset']))

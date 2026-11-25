@@ -1,6 +1,9 @@
 param(
     [Parameter(Mandatory)][string]$ProjectFile,
-    [Parameter(Mandatory)][string]$AssetPath,
+    [string]$AssetPath,
+    [ValidateSet('normal','function_library','interface')][string]$CreateKind,
+    [string]$ParentClass = '/Script/Engine.Actor',
+    [string]$MemberName,
     [string]$PatchFile,
     [string]$PresentationFile,
     [string]$DestinationPackage,
@@ -11,6 +14,9 @@ param(
     [switch]$MemoryCache
 )
 $ErrorActionPreference = 'Stop'
+if ($CreateKind -and ($AssetPath -or $WriteBack -or $PresentationFile -or $TemporaryCopy -or $MemberName)) { throw 'CreateKind cannot combine with existing-asset operations.' }
+if (-not $CreateKind -and -not $AssetPath) { throw 'AssetPath is required unless CreateKind is provided.' }
+if ($MemberName -and ($PatchFile -or $PresentationFile -or $DestinationPackage -or $WriteBack)) { throw 'MemberName is a read-only reference query.' }
 if ($PatchFile -and $PresentationFile) { throw 'Use PatchFile or PresentationFile, not both.' }
 if ($WriteBack -and ((-not $PatchFile -and -not $PresentationFile) -or $DestinationPackage)) { throw 'WriteBack requires PatchFile or PresentationFile and cannot use DestinationPackage.' }
 if ($TemporaryCopy -and ((-not $PatchFile -and -not $PresentationFile) -or -not $DestinationPackage -or $WriteBack -or $DestinationPackage -notmatch '^/Game/Workbench/(?:[A-Za-z0-9_]+/)*[A-Za-z0-9_]+$')) { throw 'TemporaryCopy requires an edit specification and a new destination under /Game/Workbench/.' }
@@ -33,7 +39,9 @@ if ($PatchFile -or $PresentationFile) {
     if ($PresentationFile) { $request.presentation = Get-Content -LiteralPath $PresentationFile -Raw | ConvertFrom-Json }
     if ($DestinationPackage) { $request.destination = $DestinationPackage }
     if ($TemporaryCopy) { $request.temporary_copy = $true }
-} elseif ($DestinationPackage) { throw 'DestinationPackage requires PatchFile.' }
+} elseif ($DestinationPackage -and -not $CreateKind) { throw 'DestinationPackage requires PatchFile.' }
+if ($CreateKind) { $request.action = 'create'; $request.kind = $CreateKind; $request.parent = $ParentClass; if (-not $request.patch) { $request.patch = @{operations=@()} }; if ($DestinationPackage) { $request.destination = $DestinationPackage } }
+if ($MemberName) { $request.action = 'references'; $request.member = $MemberName }
 $requestFile = Join-Path $outputDirectory "$runId-request.json"
 $request | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $requestFile -Encoding UTF8
 $oldRequest = $env:BLUEPRINT_WORKBENCH_REQUEST
@@ -44,6 +52,10 @@ try {
         "-script=$scriptRoot/RunWorkbench.py" -unattended -nop4 -NullRHI -nosound `
         "-abslog=$outputDirectory/$runId.log" @editorArguments
     $processExit = $LASTEXITCODE
+    if ($processExit -eq 0 -and $CreateKind -and $DestinationPackage) {
+        & $context.Editor $context.Project -run=pythonscript "-script=$scriptRoot/FinalizeCreatedWorkbench.py" -unattended -nop4 -NullRHI -nosound "-abslog=$outputDirectory/$runId-finalize.log" @editorArguments
+        $processExit = $LASTEXITCODE
+    }
     if ($processExit -eq 0 -and $WriteBack) {
         & (Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe') `
             $context.Project -run=pythonscript `

@@ -76,6 +76,18 @@ class PresentationTests(unittest.TestCase):
     def test_cycle_requires_review(self):
         connect(self.c,self.b)
         with self.assertRaises(ValueError):layout_group(self.nodes,{'entry','branch','call','value'},'entry')
+    def test_logic_verifier_preserves_function_metadata(self):
+        for field,original,changed in [('call_in_editor',True,False),('function_flags',0,1),
+                ('category','Tools','Other'),('tooltip','Help','Changed'),('event_override',True,False),
+                ('event_name','Notify','Other'),('event_owner','/Script/Engine.Actor','/Script/Engine.Pawn'),
+                ('local_variables',[{'name':'Flag','default':'true'}],[{'name':'Flag','default':'false'}])]:
+            before={'asset':'/Game/Test.Test','graphs':[{'path':'EventGraph','nodes':list(self.nodes.values())}]}
+            before['graphs'][0]['nodes'][0][field]=original
+            after=copy.deepcopy(before)
+            verify_logic(before,{'success':True,'compile_errors':0,'blueprint':after},set())
+            after['graphs'][0]['nodes'][0][field]=changed
+            with self.assertRaises(AssertionError):
+                verify_logic(before,{'success':True,'compile_errors':0,'blueprint':after},set())
     def test_logic_verifier_rejects_default_change(self):
         before={'asset':'/Game/Test.Test','graphs':[{'path':'EventGraph','nodes':list(self.nodes.values())}]}
         after=copy.deepcopy(before);after['graphs'][0]['nodes'][1]['pins'][0]['default']='different'

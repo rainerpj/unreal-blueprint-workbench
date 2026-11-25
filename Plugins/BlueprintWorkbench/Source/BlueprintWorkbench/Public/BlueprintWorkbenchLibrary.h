@@ -10,6 +10,14 @@ class BLUEPRINTWORKBENCH_API UBlueprintWorkbenchLibrary : public UBlueprintFunct
 {
     GENERATED_BODY()
 public:
+    /** Create a normal Blueprint, function library or interface; empty destination previews, existing packages are refused. */
+    UFUNCTION(BlueprintCallable, Category="Blueprint Workbench")
+    static FString CreateBlueprint(const FString& Kind, const FString& ParentClass, const FString& PatchJson, const FString& DestinationPackage = TEXT(""));
+
+    /** Read-only saved-package referencer and direct K2 call/variable impact report. Does not modify callers. */
+    UFUNCTION(BlueprintCallable, Category="Blueprint Workbench")
+    static FString FindMemberReferences(const FString& AssetPath, const FString& MemberName);
+
     /** Export graph/node/pin identities, links and member variables as JSON. Does not compile or save. */
     UFUNCTION(BlueprintCallable, Category="Blueprint Workbench")
     static FString InspectBlueprint(const FString& AssetPath);

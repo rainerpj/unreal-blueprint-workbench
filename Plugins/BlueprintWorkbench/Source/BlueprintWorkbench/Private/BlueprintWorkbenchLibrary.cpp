@@ -25,6 +25,14 @@
 #include "K2Node_FunctionEntry.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_MakeStruct.h"
+#include "K2Node_MakeArray.h"
+#include "K2Node_Message.h"
+#include "K2Node_ExecutionSequence.h"
+#include "K2Node_SwitchEnum.h"
+#include "K2Node_SetFieldsInStruct.h"
+#include "KismetCompilerMisc.h"
+#include "UObject/StructOnScope.h"
+#include "UObject/Interface.h"
 #include "K2Node_Self.h"
 #include "K2Node_CreateDelegate.h"
 #include "K2Node_AddDelegate.h"
@@ -189,6 +197,10 @@ static FObject Describe(UBlueprint* Blueprint)
             Animations.Add(MakeShared<FJsonValueString>(GetNameSafe(Animation)));
         Out->SetArrayField(TEXT("widget_animations"), Animations);
     }
+    Out->SetNumberField(TEXT("blueprint_type"), Blueprint->BlueprintType);
+    FValues Interfaces;
+    for (const auto& I : Blueprint->ImplementedInterfaces) Interfaces.Add(MakeShared<FJsonValueString>(GetPathNameSafe(I.Interface)));
+    Out->SetArrayField(TEXT("interfaces"), Interfaces);
     FValues Variables;
     for (const FBPVariableDescription& Variable : Blueprint->NewVariables)
     {
@@ -226,6 +238,31 @@ static FObject Describe(UBlueprint* Blueprint)
                 NodeItem->SetBoolField(TEXT("latent"), !Call->GetTargetFunction() || Call->GetTargetFunction()->HasMetaData(TEXT("Latent")));
             if (UEdGraphNode_Comment* Comment = Cast<UEdGraphNode_Comment>(Node))
                 NodeItem->SetStringField(TEXT("details"), CommentDetails(Comment));
+            if (auto* Entry = Cast<UK2Node_FunctionEntry>(Node))
+            {
+                NodeItem->SetBoolField(TEXT("call_in_editor"), Entry->MetaData.bCallInEditor);
+                NodeItem->SetNumberField(TEXT("function_flags"), Entry->GetExtraFlags());
+                NodeItem->SetStringField(TEXT("category"), Entry->MetaData.Category.ToString());
+                NodeItem->SetStringField(TEXT("tooltip"), Entry->MetaData.ToolTip.ToString());
+                FValues Locals;
+                for (const FBPVariableDescription& Local : Entry->LocalVariables)
+                {
+                    FObject L = MakeShared<FJsonObject>();
+                    L->SetStringField(TEXT("name"), Local.VarName.ToString());
+                    L->SetObjectField(TEXT("type"), PinType(Local.VarType));
+                    L->SetStringField(TEXT("default"), Local.DefaultValue);
+                    Locals.Add(MakeShared<FJsonValueObject>(L));
+                }
+                NodeItem->SetArrayField(TEXT("local_variables"), Locals);
+            }
+            if (auto* Event = Cast<UK2Node_Event>(Node))
+            {
+                NodeItem->SetBoolField(TEXT("event_override"), Event->bOverrideFunction);
+                NodeItem->SetStringField(TEXT("event_name"), Event->EventReference.GetMemberName().ToString());
+                NodeItem->SetStringField(TEXT("event_owner"), GetPathNameSafe(Event->EventReference.GetMemberParentClass(Blueprint->SkeletonGeneratedClass)));
+            }
+            if (auto* Event = Cast<UK2Node_CustomEvent>(Node))
+                NodeItem->SetBoolField(TEXT("call_in_editor"), Event->bCallInEditor);
             FValues Pins;
             for (UEdGraphPin* Pin : Node->Pins)
             {
@@ -345,48 +382,94 @@ struct FPatch
             || Reject(TEXT("Invalid or existing member name: ") + Name);
     }
 
+    bool ReadType(const FObject& Spec, FEdGraphPinType& Type)
+    {
+        const FString Kind = String(Spec, TEXT("type"));
+        if (Kind == TEXT("bool")) Type.PinCategory = UEdGraphSchema_K2::PC_Boolean;
+        else if (Kind == TEXT("int")) Type.PinCategory = UEdGraphSchema_K2::PC_Int;
+        else if (Kind == TEXT("int64")) Type.PinCategory = UEdGraphSchema_K2::PC_Int64;
+        else if (Kind == TEXT("byte") || Kind == TEXT("enum")) Type.PinCategory = UEdGraphSchema_K2::PC_Byte;
+        else if (Kind == TEXT("float") || Kind == TEXT("double")) { Type.PinCategory = UEdGraphSchema_K2::PC_Real; Type.PinSubCategory = Kind == TEXT("float") ? UEdGraphSchema_K2::PC_Float : UEdGraphSchema_K2::PC_Double; }
+        else if (Kind == TEXT("string")) Type.PinCategory = UEdGraphSchema_K2::PC_String;
+        else if (Kind == TEXT("name")) Type.PinCategory = UEdGraphSchema_K2::PC_Name;
+        else if (Kind == TEXT("text")) Type.PinCategory = UEdGraphSchema_K2::PC_Text;
+        else if (Kind == TEXT("struct")) Type.PinCategory = UEdGraphSchema_K2::PC_Struct;
+        else if (Kind == TEXT("object")) Type.PinCategory = UEdGraphSchema_K2::PC_Object;
+        else if (Kind == TEXT("class")) Type.PinCategory = UEdGraphSchema_K2::PC_Class;
+        else if (Kind == TEXT("soft_object")) Type.PinCategory = UEdGraphSchema_K2::PC_SoftObject;
+        else if (Kind == TEXT("soft_class")) Type.PinCategory = UEdGraphSchema_K2::PC_SoftClass;
+        else if (Kind == TEXT("interface")) Type.PinCategory = UEdGraphSchema_K2::PC_Interface;
+        else return Reject(TEXT("Unsupported type: ") + Kind);
+        if (Kind == TEXT("struct")) Type.PinSubCategoryObject = LoadObject<UScriptStruct>(nullptr, *String(Spec, TEXT("object")));
+        else if (Kind == TEXT("enum")) Type.PinSubCategoryObject = LoadObject<UEnum>(nullptr, *String(Spec, TEXT("object")));
+        else if (Kind == TEXT("object") || Kind == TEXT("class") || Kind == TEXT("soft_object") || Kind == TEXT("soft_class") || Kind == TEXT("interface"))
+            Type.PinSubCategoryObject = LoadObject<UClass>(nullptr, *String(Spec, TEXT("object")));
+        if ((Kind == TEXT("struct") || Kind == TEXT("enum") || Kind == TEXT("object") || Kind == TEXT("class") || Kind == TEXT("soft_object") || Kind == TEXT("soft_class") || Kind == TEXT("interface")) && !Type.PinSubCategoryObject.IsValid())
+            return Reject(TEXT("Type object not found"));
+        if (Kind == TEXT("interface") && !CastChecked<UClass>(Type.PinSubCategoryObject.Get())->HasAnyClassFlags(CLASS_Interface)) return Reject(TEXT("Expected an interface class"));
+        const FString Container = String(Spec, TEXT("container"));
+        if (Container == TEXT("array")) Type.ContainerType = EPinContainerType::Array;
+        else if (Container == TEXT("set")) Type.ContainerType = EPinContainerType::Set;
+        else if (Container == TEXT("map"))
+        {
+            Type.ContainerType = EPinContainerType::Map;
+            const FObject* Value = nullptr;
+            FEdGraphPinType ValueType;
+            if (Spec->TryGetObjectField(TEXT("value_type"), Value)) { if (!ReadType(*Value, ValueType)) return false; }
+            else if (Spec->HasField(TEXT("value_object"))) { ValueType.PinCategory = UEdGraphSchema_K2::PC_Struct; ValueType.PinSubCategoryObject = LoadObject<UScriptStruct>(nullptr, *String(Spec, TEXT("value_object"))); if (!ValueType.PinSubCategoryObject.IsValid()) return Reject(TEXT("Map value struct not found")); }
+            else return Reject(TEXT("Map requires value_type"));
+            if (ValueType.IsContainer() || ValueType.bIsReference) return Reject(TEXT("Nested containers and reference map values are not supported by K2"));
+            Type.PinValueType.TerminalCategory = ValueType.PinCategory;
+            Type.PinValueType.TerminalSubCategory = ValueType.PinSubCategory;
+            Type.PinValueType.TerminalSubCategoryObject = ValueType.PinSubCategoryObject;
+        }
+        else if (!Container.IsEmpty()) return Reject(TEXT("Unsupported container"));
+        if (Spec->HasField(TEXT("reference")))
+        {
+            bool Ref;
+            if (!Spec->HasTypedField<EJson::Boolean>(TEXT("reference")) || !Spec->TryGetBoolField(TEXT("reference"), Ref)) return Reject(TEXT("reference must be boolean"));
+            Type.bIsReference = Ref;
+        }
+        if (Spec->HasField(TEXT("const")))
+        {
+            bool Const;
+            if (!Spec->HasTypedField<EJson::Boolean>(TEXT("const")) || !Spec->TryGetBoolField(TEXT("const"), Const)) return Reject(TEXT("const must be boolean"));
+            Type.bIsConst = Const;
+        }
+        return true;
+    }
+
+    bool ValidateValue(const FEdGraphPinType& Type, const FString& Value)
+    {
+        if (!Type.IsContainer() && Type.PinCategory == UEdGraphSchema_K2::PC_Boolean && Value != TEXT("true") && Value != TEXT("false")) return Reject(TEXT("Boolean defaults must be true or false"));
+        TStrongObjectPtr<UScriptStruct> Scope(NewObject<UScriptStruct>(GetTransientPackage()));
+        FCompilerResultsLog Log;
+        FProperty* Property = FKismetCompilerUtilities::CreatePropertyOnScope(Scope.Get(), TEXT("Value"), Type, Blueprint->SkeletonGeneratedClass, CPF_None, GetDefault<UEdGraphSchema_K2>(), Log);
+        if (!Property || Log.NumErrors) { if (Property) delete Property; return Reject(TEXT("Invalid property type (including unhashable set/map key)")); }
+        Scope->AddCppProperty(Property);
+        Scope->Bind();
+        Scope->StaticLink(true);
+        FStructOnScope Data(Scope.Get());
+        if (!Type.IsContainer() && (Type.PinCategory == UEdGraphSchema_K2::PC_String || Type.PinCategory == UEdGraphSchema_K2::PC_Text)) return true;
+        const TCHAR* End = Property->ImportText_Direct(*Value, Property->ContainerPtrToValuePtr<void>(Data.GetStructMemory()), Blueprint, PPF_None);
+        if (!End || !FString(End).TrimStartAndEnd().IsEmpty()) return Reject(TEXT("Invalid default value for property type"));
+        if (auto* ObjectProperty = CastField<FObjectPropertyBase>(Property))
+            if (!CastField<FSoftObjectProperty>(Property) && Value != TEXT("None") && !Value.IsEmpty() && !ObjectProperty->GetObjectPropertyValue_InContainer(Data.GetStructMemory())) return Reject(TEXT("Hard reference default did not resolve to an object"));
+        return true;
+    }
+
     bool Variable(const FObject& Op)
     {
+        if (Blueprint->BlueprintType != BPTYPE_Normal) return Reject(TEXT("Members require a normal Blueprint"));
         const FString Name = String(Op, TEXT("name"));
         if (!NewName(Name)) return false;
-        const FString Type = String(Op, TEXT("type"));
-        FEdGraphPinType PinType;
-        if (Type == TEXT("bool")) PinType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
-        else if (Type == TEXT("int")) PinType.PinCategory = UEdGraphSchema_K2::PC_Int;
-        else if (Type == TEXT("float") || Type == TEXT("double"))
-        {
-            PinType.PinCategory = UEdGraphSchema_K2::PC_Real;
-            PinType.PinSubCategory = Type == TEXT("float") ? UEdGraphSchema_K2::PC_Float : UEdGraphSchema_K2::PC_Double;
-        }
-        else if (Type == TEXT("string")) PinType.PinCategory = UEdGraphSchema_K2::PC_String;
-        else if (Type == TEXT("name")) PinType.PinCategory = UEdGraphSchema_K2::PC_Name;
-        else if (Type == TEXT("struct"))
-        {
-            PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
-            PinType.PinSubCategoryObject = LoadObject<UScriptStruct>(nullptr, *String(Op, TEXT("object")));
-            if (!PinType.PinSubCategoryObject.IsValid()) return Reject(TEXT("Struct type not found"));
-        }
-        else if (Type == TEXT("object"))
-        {
-            PinType.PinCategory = UEdGraphSchema_K2::PC_Object;
-            PinType.PinSubCategoryObject = LoadObject<UClass>(nullptr, *String(Op, TEXT("object")));
-            if (!PinType.PinSubCategoryObject.IsValid()) return Reject(TEXT("Object class not found"));
-        }
-        else return Reject(TEXT("Unsupported variable type: ") + Type);
-        const FString Container = String(Op, TEXT("container"));
-        if (!Container.IsEmpty() && Container != TEXT("map")) return Reject(TEXT("Unsupported container: ") + Container);
-        if (String(Op, TEXT("container")) == TEXT("map"))
-        {
-            PinType.ContainerType = EPinContainerType::Map;
-            PinType.PinValueType.TerminalCategory = UEdGraphSchema_K2::PC_Struct;
-            PinType.PinValueType.TerminalSubCategoryObject = LoadObject<UScriptStruct>(nullptr, *String(Op, TEXT("value_object")));
-            if (!PinType.PinValueType.TerminalSubCategoryObject.IsValid()) return Reject(TEXT("Map value struct not found"));
-        }
-        // Defaults are edited through typed input pins; member variables use their normal zero defaults.
-        if (Op->HasField(TEXT("default"))) return Reject(TEXT("Member defaults are not supported; use set_default on a setter input"));
-        if (!FBlueprintEditorUtils::AddMemberVariable(Blueprint, FName(*Name), PinType)) return Reject(TEXT("AddMemberVariable failed"));
-        if (Op->HasField(TEXT("editable")) && Op->GetBoolField(TEXT("editable")))
-            FBlueprintEditorUtils::SetBlueprintOnlyEditableFlag(Blueprint, FName(*Name), false);
+        FEdGraphPinType Type;
+        if (!ReadType(Op, Type)) return false;
+        if (Type.bIsReference || Type.bIsConst) return Reject(TEXT("Member variables cannot be reference/const parameters"));
+        FString Default;
+        if (Op->HasField(TEXT("default")) && (!Op->HasTypedField<EJson::String>(TEXT("default")) || !Op->TryGetStringField(TEXT("default"), Default) || !ValidateValue(Type, Default))) return Reject(Error.IsEmpty() ? TEXT("default must be a string") : Error);
+        if (!FBlueprintEditorUtils::AddMemberVariable(Blueprint, FName(*Name), Type, Default)) return Reject(TEXT("AddMemberVariable failed"));
+        if (Op->HasField(TEXT("editable")) && Op->GetBoolField(TEXT("editable"))) FBlueprintEditorUtils::SetBlueprintOnlyEditableFlag(Blueprint, FName(*Name), false);
         return true;
     }
 
@@ -435,11 +518,25 @@ struct FPatch
         return Node;
     }
 
+    #include "WorkbenchAdvancedOperations.inl"
+
+    bool LocalDefault(UK2Node_FunctionEntry* Entry, FBPVariableDescription& Local, const FObject& Op, const TCHAR* Field)
+    {
+        FString Value;
+        if (!Op->HasTypedField<EJson::String>(Field) || !Op->TryGetStringField(Field, Value)) return Reject(TEXT("Local default must be a string"));
+        if (!ValidateValue(Local.VarType, Value)) return false;
+        Local.DefaultValue = Value;
+        Entry->RefreshFunctionVariableCache();
+        FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
+        return true;
+    }
+
     bool Signature(const FObject& Op)
     {
         const FString Name = String(Op, TEXT("name"));
         UEdGraph* Target = nullptr;
         for (UEdGraph* G : Blueprint->FunctionGraphs) if (G->GetName() == Name) Target = G;
+        for (UEdGraph* G : Blueprint->DelegateSignatureGraphs) if (G->GetName() == Name) Target = G;
         if (!Target)
         {
             if (!NewName(Name)) return false;
@@ -450,36 +547,68 @@ struct FPatch
         for (UEdGraphNode* N : Target->Nodes) if (auto* E = Cast<UK2Node_FunctionEntry>(N)) Entry = E;
         if (!Entry) return Reject(TEXT("Missing function entry"));
         const FValues* Parameters = nullptr;
+        if (Op->HasField(TEXT("parameters")) && !Op->HasTypedField<EJson::Array>(TEXT("parameters"))) return Reject(TEXT("parameters must be an array"));
         if (Op->TryGetArrayField(TEXT("parameters"), Parameters)) for (const auto& V : *Parameters)
         {
             FObject P = V->AsObject();
+            if (!P.IsValid()) return Reject(TEXT("Parameter must be an object"));
+            for (const auto& Field : P->Values)
+                if (Field.Key != TEXT("name") && Field.Key != TEXT("type") && Field.Key != TEXT("direction") && Field.Key != TEXT("object") && Field.Key != TEXT("default") && Field.Key != TEXT("container") && Field.Key != TEXT("value_type") && Field.Key != TEXT("value_object") && Field.Key != TEXT("reference") && Field.Key != TEXT("const"))
+                    return Reject(TEXT("Unsupported parameter field: ") + Field.Key);
+
             FEdGraphPinType Type;
-            FString Kind = String(P, TEXT("type"));
-            if (Kind == TEXT("object")) { Type.PinCategory = UEdGraphSchema_K2::PC_Object; Type.PinSubCategoryObject = LoadObject<UClass>(nullptr, *String(P, TEXT("object"))); }
-            else if (Kind == TEXT("struct")) { Type.PinCategory = UEdGraphSchema_K2::PC_Struct; Type.PinSubCategoryObject = LoadObject<UScriptStruct>(nullptr, *String(P, TEXT("object"))); }
-            else if (Kind == TEXT("bool")) Type.PinCategory = UEdGraphSchema_K2::PC_Boolean;
-            else if (Kind == TEXT("float")) { Type.PinCategory = UEdGraphSchema_K2::PC_Real; Type.PinSubCategory = UEdGraphSchema_K2::PC_Float; }
-            else return Reject(TEXT("Unsupported signature type"));
-            if ((Kind == TEXT("object") || Kind == TEXT("struct")) && !Type.PinSubCategoryObject.IsValid()) return Reject(TEXT("Signature type not found"));
+            if (!ReadType(P, Type)) return false;
             FName PinName(*String(P, TEXT("name")));
             FString Direction = String(P, TEXT("direction"));
+            if (Blueprint->DelegateSignatureGraphs.Contains(Target) && (Direction != TEXT("input") || P->HasField(TEXT("default")))) return Reject(TEXT("Dispatcher signatures accept inputs without defaults"));
             if (Direction == TEXT("local"))
             {
+                if (Blueprint->BlueprintType == BPTYPE_Interface || Type.bIsReference || Type.bIsConst) return Reject(TEXT("Invalid interface/local reference variable"));
                 if (!FBlueprintEditorUtils::AddLocalVariable(Blueprint, Target, PinName, Type)) return Reject(TEXT("Could not add local"));
+                if (P->HasField(TEXT("default")))
+                    for (FBPVariableDescription& Local : Entry->LocalVariables)
+                        if (Local.VarName == PinName && !LocalDefault(Entry, Local, P, TEXT("default"))) return false;
             }
             else if (Direction == TEXT("input"))
             {
                 if (Entry->FindPin(PinName)) return Reject(TEXT("Input already exists"));
                 Entry->CreateUserDefinedPin(PinName, Type, EGPD_Output);
+                if (P->HasField(TEXT("default")))
+                {
+                    FString Value;
+                    if (!P->HasTypedField<EJson::String>(TEXT("default")) || !P->TryGetStringField(TEXT("default"), Value) || !ValidateValue(Type, Value)) return Reject(TEXT("Invalid parameter default"));
+                    for (auto& Info : Entry->UserDefinedPins) if (Info->PinName == PinName && !Entry->ModifyUserDefinedPinDefaultValue(Info, Value)) return Reject(TEXT("Parameter default rejected by K2 schema"));
+                }
             }
             else if (Direction == TEXT("output"))
             {
+                if (P->HasField(TEXT("default"))) return Reject(TEXT("Output defaults are set on return node input pins"));
                 TArray<UK2Node_FunctionResult*> Results;
                 for (UEdGraphNode* N : Target->Nodes) if (auto* R = Cast<UK2Node_FunctionResult>(N)) Results.Add(R);
                 if (Results.IsEmpty()) Results.Add(CastChecked<UK2Node_FunctionResult>(Create<UK2Node_FunctionResult>(Target, [](auto*) {})));
-                for (auto* R : Results) { if (R->FindPin(PinName)) return Reject(TEXT("Output already exists")); R->CreateUserDefinedPin(PinName, Type, EGPD_Input); }
+                for (auto* R : Results)
+                {
+                    if (R->FindPin(PinName)) return Reject(TEXT("Output already exists"));
+                    UEdGraphPin* Pin = R->CreateUserDefinedPin(PinName, Type, EGPD_Input);
+                    GetDefault<UEdGraphSchema_K2>()->SetPinAutogeneratedDefaultValueBasedOnType(Pin);
+                    for (auto& Info : R->UserDefinedPins) if (Info->PinName == PinName) Info->PinDefaultValue = Pin->DefaultValue;
+                }
             }
             else return Reject(TEXT("Invalid parameter direction"));
+        }
+        for (const TCHAR* Field : {TEXT("entry_id"), TEXT("result_id")})
+        {
+            if (!Op->HasField(Field)) continue;
+            FString Id = String(Op, Field); FGuid Guid;
+            if (Id.IsEmpty() || Aliases.Contains(Id) || FGuid::Parse(Id, Guid)) return Reject(TEXT("Signature node alias must be unique and non-Guid"));
+            UEdGraphNode* Node = Entry;
+            if (FString(Field) == TEXT("result_id"))
+            {
+                Node = nullptr;
+                for (UEdGraphNode* N : Target->Nodes) if (Cast<UK2Node_FunctionResult>(N)) { if (Node) return Reject(TEXT("Multiple results; use inspected GUID")); Node = N; }
+            }
+            if (!Node) return Reject(TEXT("Signature result node not found"));
+            Aliases.Add(Id, Node);
         }
         FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
         return true;
@@ -534,6 +663,55 @@ struct FPatch
             if (!Class) return Reject(TEXT("Cast class missing"));
             Added = Create<UK2Node_DynamicCast>(TargetGraph, [Class](auto* N) { N->TargetType = Class; });
         }
+        else if (Kind == TEXT("sequence")) Added = Create<UK2Node_ExecutionSequence>(TargetGraph, [](auto*) {});
+        else if (Kind == TEXT("select")) Added = Create<UK2Node_Select>(TargetGraph, [](auto*) {});
+        else if (Kind == TEXT("switch_enum"))
+        {
+            UEnum* Enum = LoadObject<UEnum>(nullptr, *String(Op, TEXT("enum")));
+            if (!Enum) return Reject(TEXT("Enum not found"));
+            Added = Create<UK2Node_SwitchEnum>(TargetGraph, [Enum](auto* N) { N->Enum = Enum; });
+        }
+        else if (Kind == TEXT("set_members_struct"))
+        {
+            auto* Struct = LoadObject<UScriptStruct>(nullptr, *String(Op, TEXT("struct")));
+            if (!Struct) return Reject(TEXT("Struct not found"));
+            if (!UK2Node_MakeStruct::CanBeMade(Struct))
+                return Reject(TEXT("Struct cannot use native Set Members; use its native Make function and assign the result"));
+            auto* N = CastChecked<UK2Node_SetFieldsInStruct>(Create<UK2Node_SetFieldsInStruct>(TargetGraph, [Struct](auto* N) { N->StructType = Struct; }));
+            N->RestoreAllPins();
+            const FValues* Fields = nullptr;
+            if (Op->TryGetArrayField(TEXT("fields"), Fields))
+            {
+                TSet<FName> Names;
+                for (const auto& V : *Fields) { FString Name; if (!V->TryGetString(Name) || !N->FindPin(FName(*Name))) return Reject(TEXT("Struct member pin not found")); Names.Add(FName(*Name)); }
+                for (auto& Pin : N->ShowPinForProperties) Pin.bShowPin = Names.Contains(Pin.PropertyName);
+                N->ReconstructNode();
+            }
+            Added = N;
+        }
+        else if (Kind == TEXT("interface_event")) { if (!InterfaceEvent(Op, TargetGraph, Added)) return false; }
+        else if (Kind == TEXT("interface_message"))
+        {
+            UClass* Owner = LoadObject<UClass>(nullptr, *String(Op, TEXT("owner")));
+            UFunction* Function = Owner ? Owner->FindFunctionByName(FName(*String(Op, TEXT("function")))) : nullptr;
+            if (!Owner || !Owner->HasAnyClassFlags(CLASS_Interface) || !Function) return Reject(TEXT("Interface function not found"));
+            Added = Create<UK2Node_Message>(TargetGraph, [Function](auto* N) { N->SetFromFunction(Function); });
+        }
+        else if (Kind == TEXT("dispatcher_call"))
+        {
+            UClass* Owner = String(Op,TEXT("owner")).IsEmpty() ? Blueprint->SkeletonGeneratedClass.Get() : LoadObject<UClass>(nullptr, *String(Op,TEXT("owner")));
+            auto* Property = Owner ? FindFProperty<FMulticastDelegateProperty>(Owner, FName(*String(Op,TEXT("name")))) : nullptr;
+            if (!Property) return Reject(TEXT("Dispatcher not found"));
+            Added = Create<UK2Node_CallDelegate>(TargetGraph, [Property,Owner](auto* N) { N->SetFromProperty(Property, false, Owner); });
+        }
+        else if (Kind == TEXT("make_array"))
+        {
+            double Count = 1;
+            if (Op->HasField(TEXT("num_inputs")) && (!Op->HasTypedField<EJson::Number>(TEXT("num_inputs")) || !Op->TryGetNumberField(TEXT("num_inputs"), Count) ||
+                !FMath::IsFinite(Count) || Count < 0 || Count > 1024 || Count != FMath::FloorToDouble(Count)))
+                return Reject(TEXT("num_inputs must be an integer between 0 and 1024"));
+            Added = Create<UK2Node_MakeArray>(TargetGraph, [Count](auto* N) { N->NumInputs = static_cast<int32>(Count); });
+        }
         else if (Kind == TEXT("make_struct"))
         {
             UScriptStruct* Struct = LoadObject<UScriptStruct>(nullptr, *String(Op, TEXT("struct")));
@@ -557,11 +735,12 @@ struct FPatch
             if (!Property || !Delegate) return Reject(TEXT("Component event property missing"));
             Added = Create<UK2Node_ComponentBoundEvent>(TargetGraph, [Property,Delegate](auto* N) { N->InitializeComponentBoundEventParams(Property,Delegate); });
         }
-        else if (Kind == TEXT("foreach"))
+        else if (Kind == TEXT("foreach") || Kind == TEXT("for_loop") || Kind == TEXT("for_loop_break") || Kind == TEXT("foreach_break"))
         {
             auto* MacroBP = LoadObject<UBlueprint>(nullptr,TEXT("/Engine/EditorBlueprintResources/StandardMacros.StandardMacros"));
             UEdGraph* Macro = nullptr;
-            if (MacroBP) for (UEdGraph* G : MacroBP->MacroGraphs) if (G->GetName() == TEXT("ForEachLoop")) Macro = G;
+            const FString MacroName = Kind == TEXT("foreach") ? TEXT("ForEachLoop") : Kind == TEXT("for_loop") ? TEXT("ForLoop") : Kind == TEXT("for_loop_break") ? TEXT("ForLoopWithBreak") : TEXT("ForEachLoopWithBreak");
+            if (MacroBP) for (UEdGraph* G : MacroBP->MacroGraphs) if (G->GetName() == MacroName) Macro = G;
             if (!Macro) return Reject(TEXT("ForEach macro missing"));
             Added = Create<UK2Node_MacroInstance>(TargetGraph, [Macro](auto* N) { N->SetMacroGraph(Macro); });
         }
@@ -646,6 +825,8 @@ struct FPatch
             Added = Create<UK2Node_CustomEvent>(TargetGraph, [&Name](auto* NewNode) { NewNode->CustomFunctionName = FName(*Name); });
         }
         else return Reject(TEXT("Unsupported node kind: ") + Kind);
+        if (auto* Event = Cast<UK2Node_CustomEvent>(Added))
+            if (!EventParameters(Event, Op)) return false;
         double X = 0, Y = 0;
         Op->TryGetNumberField(TEXT("x"), X);
         Op->TryGetNumberField(TEXT("y"), Y);
@@ -658,21 +839,47 @@ struct FPatch
     bool Apply(const FObject& Op)
     {
         const FString Kind = String(Op, TEXT("op"));
+        if (Blueprint->BlueprintType == BPTYPE_Interface && Kind != TEXT("signature") && Kind != TEXT("function_properties") && Kind != TEXT("rename_function") && Kind != TEXT("edit_parameter"))
+            return Reject(TEXT("Interfaces permit only signature, function metadata and parameter edits"));
         // Catch misspelled/unsupported fields rather than silently applying a different patch.
         TArray<FString> Fields;
-        if (Kind == TEXT("signature")) Fields = {TEXT("op"), TEXT("name"), TEXT("parameters")};
+        if (Kind == TEXT("signature")) Fields = {TEXT("op"), TEXT("name"), TEXT("parameters"), TEXT("entry_id"), TEXT("result_id")};
+        else if (Kind == TEXT("function_properties")) Fields = {TEXT("op"), TEXT("graph"), TEXT("pure"), TEXT("access"), TEXT("category"), TEXT("tooltip")};
+        else if (Kind == TEXT("set_member_default")) Fields = {TEXT("op"), TEXT("variable"), TEXT("value")};
+        else if (Kind == TEXT("add_dispatcher")) Fields = {TEXT("op"), TEXT("name"), TEXT("parameters")};
+        else if (Kind == TEXT("refresh_interfaces")) Fields = {TEXT("op")};
+        else if (Kind == TEXT("implement_interface")) Fields = {TEXT("op"), TEXT("interface")};
+        else if (Kind == TEXT("rename_function") || Kind == TEXT("rename_variable")) Fields = {TEXT("op"), TEXT("name"), TEXT("new_name"), TEXT("graph")};
+        else if (Kind == TEXT("edit_parameter")) Fields = {TEXT("op"), TEXT("graph"), TEXT("node"), TEXT("name"), TEXT("direction"), TEXT("action"), TEXT("new_name"), TEXT("value"), TEXT("type"), TEXT("object"), TEXT("container"), TEXT("value_type"), TEXT("reference"), TEXT("const")};
+        else if (Kind == TEXT("edit_pins")) Fields = {TEXT("op"), TEXT("graph"), TEXT("node"), TEXT("pin"), TEXT("action")};
+        else if (Kind == TEXT("replace_node")) Fields = {TEXT("op"), TEXT("graph"), TEXT("node"), TEXT("replacement"), TEXT("pin_map")};
         else if (Kind == TEXT("add_component")) Fields = {TEXT("op"), TEXT("name"), TEXT("class")};
-        else if (Kind == TEXT("refresh_calls")) Fields = {TEXT("op"), TEXT("functions")};
-        else if (Kind == TEXT("add_variable")) Fields = {TEXT("op"), TEXT("name"), TEXT("type"), TEXT("object"), TEXT("container"), TEXT("value_object"), TEXT("editable")};
+        else if (Kind == TEXT("refresh_calls")) Fields = {TEXT("op"), TEXT("functions"), TEXT("owner")};
+        else if (Kind == TEXT("add_variable")) Fields = {TEXT("op"), TEXT("name"), TEXT("type"), TEXT("object"), TEXT("container"), TEXT("value_object"), TEXT("editable"), TEXT("value_type"), TEXT("default"), TEXT("reference"), TEXT("const")};
         else if (Kind == TEXT("add_override")) Fields = {TEXT("op"), TEXT("name"), TEXT("graph")};
-        else if (Kind == TEXT("add_node")) Fields = {TEXT("op"), TEXT("graph"), TEXT("kind"), TEXT("id"), TEXT("x"), TEXT("y"), TEXT("owner"), TEXT("function"), TEXT("variable"), TEXT("name"), TEXT("struct"), TEXT("text"), TEXT("details"), TEXT("width"), TEXT("height"), TEXT("members"), TEXT("source_node")};
+        else if (Kind == TEXT("add_node")) Fields = {TEXT("op"), TEXT("graph"), TEXT("kind"), TEXT("id"), TEXT("x"), TEXT("y"), TEXT("owner"), TEXT("function"), TEXT("variable"), TEXT("name"), TEXT("struct"), TEXT("text"), TEXT("details"), TEXT("width"), TEXT("height"), TEXT("members"), TEXT("source_node"), TEXT("num_inputs"), TEXT("enum"), TEXT("fields"), TEXT("parameters")};
         else if (Kind == TEXT("move_node")) Fields = {TEXT("op"), TEXT("graph"), TEXT("node"), TEXT("x"), TEXT("y")};
         else if (Kind == TEXT("remove_unused_nodes")) Fields = {TEXT("op"), TEXT("graph"), TEXT("nodes")};
+        else if (Kind == TEXT("set_local_default")) Fields = {TEXT("op"), TEXT("graph"), TEXT("variable"), TEXT("value")};
+        else if (Kind == TEXT("set_call_in_editor")) Fields = {TEXT("op"), TEXT("graph"), TEXT("node"), TEXT("value")};
         else if (Kind == TEXT("set_default")) Fields = {TEXT("op"), TEXT("graph"), TEXT("node"), TEXT("pin"), TEXT("pin_id"), TEXT("value")};
         else if (Kind == TEXT("connect") || Kind == TEXT("disconnect")) Fields = {TEXT("op"), TEXT("graph"), TEXT("from"), TEXT("to")};
         else return Reject(TEXT("Unsupported operation: ") + Kind);
         for (const auto& Field : Op->Values)
             if (!Fields.Contains(Field.Key)) return Reject(TEXT("Unsupported field: ") + Field.Key);
+        if (Kind == TEXT("function_properties")) return FunctionProperties(Op);
+        if (Kind == TEXT("set_member_default")) return MemberDefault(Op);
+        if (Kind == TEXT("add_dispatcher")) return Dispatcher(Op);
+        if (Kind == TEXT("implement_interface")) return ImplementInterface(Op);
+        if (Kind == TEXT("refresh_interfaces"))
+        {
+            if (Blueprint->BlueprintType != BPTYPE_Normal) return Reject(TEXT("Interface implementations require a normal Blueprint"));
+            FBlueprintEditorUtils::ConformImplementedInterfaces(Blueprint);
+            FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+            return true;
+        }
+        if (Kind == TEXT("rename_function") || Kind == TEXT("rename_variable")) return Rename(Op);
+        if (Kind == TEXT("edit_parameter")) return EditParameter(Op);
         if (Kind == TEXT("signature")) return Signature(Op);
         if (Kind == TEXT("add_component")) return Component(Op);
         if (Kind == TEXT("refresh_calls"))
@@ -680,6 +887,8 @@ struct FPatch
             const FValues* Functions = nullptr;
             if (!Op->TryGetArrayField(TEXT("functions"), Functions) || Functions->IsEmpty())
                 return Reject(TEXT("Explicit nonempty function list required"));
+            UClass* Owner = Op->HasField(TEXT("owner")) ? LoadObject<UClass>(nullptr, *String(Op,TEXT("owner"))) : nullptr;
+            if (Op->HasField(TEXT("owner")) && !Owner) return Reject(TEXT("Refresh owner not found"));
             TSet<FName> Names;
             for (const auto& Value : *Functions)
             {
@@ -691,14 +900,42 @@ struct FPatch
             Blueprint->GetAllGraphs(Graphs);
             for (UEdGraph* G : Graphs)
                 for (UEdGraphNode* N : G->Nodes)
-                    if (auto* Call = Cast<UK2Node_CallFunction>(N))
-                        if (Names.Contains(Call->FunctionReference.GetMemberName())) Call->ReconstructNode();
+                {
+                    const FMemberReference* Reference = nullptr;
+                    if (auto* Call = Cast<UK2Node_CallFunction>(N)) Reference = &Call->FunctionReference;
+                    if (auto* Delegate = Cast<UK2Node_BaseMCDelegate>(N)) Reference = &Delegate->DelegateReference;
+                    if (Reference && Names.Contains(Reference->GetMemberName()) && (!Owner || Reference->GetMemberParentClass(Blueprint->SkeletonGeneratedClass) == Owner)) N->ReconstructNode();
+                }
             return true;
         }
         if (Kind == TEXT("add_variable")) return Variable(Op);
         if (Kind == TEXT("add_override")) return Override(Op);
         UEdGraph* TargetGraph = Graph(String(Op, TEXT("graph")));
         if (!TargetGraph) return false;
+        if (Kind == TEXT("edit_pins")) return PinEdit(Op, TargetGraph);
+        if (Kind == TEXT("replace_node")) return ReplaceNode(Op, TargetGraph);
+        if (Kind == TEXT("set_local_default"))
+        {
+            for (UEdGraphNode* N : TargetGraph->Nodes)
+                if (auto* Entry = Cast<UK2Node_FunctionEntry>(N))
+                    for (FBPVariableDescription& Local : Entry->LocalVariables)
+                        if (Local.VarName == FName(*String(Op, TEXT("variable"))))
+                            return LocalDefault(Entry, Local, Op, TEXT("value"));
+            return Reject(TEXT("Local variable not found in function graph"));
+        }
+        if (Kind == TEXT("set_call_in_editor"))
+        {
+            bool Value = false;
+            if (!Op->HasTypedField<EJson::Boolean>(TEXT("value")) || !Op->TryGetBoolField(TEXT("value"), Value)) return Reject(TEXT("value must be a boolean"));
+            UEdGraphNode* Target = nullptr;
+            if (Op->HasField(TEXT("node"))) Target = ResolveNode(TargetGraph, String(Op, TEXT("node")));
+            else for (UEdGraphNode* N : TargetGraph->Nodes) if (Cast<UK2Node_FunctionEntry>(N)) { Target = N; break; }
+            if (auto* Entry = Cast<UK2Node_FunctionEntry>(Target)) Entry->MetaData.bCallInEditor = Value;
+            else if (auto* Event = Cast<UK2Node_CustomEvent>(Target)) Event->bCallInEditor = Value;
+            else return Reject(TEXT("Call in Editor requires a function entry or custom event"));
+            FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+            return true;
+        }
         if (Kind == TEXT("move_node"))
         {
             UEdGraphNode* Existing = ResolveNode(TargetGraph, String(Op, TEXT("node")));
@@ -760,17 +997,29 @@ struct FPatch
             UEdGraphPin* Input = Pin(TargetGraph, Op, EGPD_Input);
             if (!Input) return false;
             FString Value;
-            if (!Op->TryGetStringField(TEXT("value"), Value)) return Reject(TEXT("value must be a string"));
+            if (!Op->HasTypedField<EJson::String>(TEXT("value")) || !Op->TryGetStringField(TEXT("value"), Value)) return Reject(TEXT("value must be a string"));
             if (!Input->LinkedTo.IsEmpty() || Input->bDefaultValueIsIgnored || Input->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
                 return Reject(TEXT("Default requires an unconnected data input"));
-            // Object and localized text defaults require different UE setters, intentionally excluded in v0.1.
+            if (Input->PinType.PinCategory == UEdGraphSchema_K2::PC_Object || Input->PinType.PinCategory == UEdGraphSchema_K2::PC_Class || Input->PinType.PinCategory == UEdGraphSchema_K2::PC_Interface)
+            {
+                UObject* Object = Value.IsEmpty() || Value == TEXT("None") ? nullptr : LoadObject<UObject>(nullptr, *Value);
+                if (!Object && !Value.IsEmpty() && Value != TEXT("None")) return Reject(TEXT("Default object not found"));
+                const FString Invalid = Schema->IsPinDefaultValid(Input, FString(), Object, FText());
+                if (!Invalid.IsEmpty()) return Reject(Invalid);
+                Schema->TrySetDefaultObject(*Input, Object); return true;
+            }
+            if (Input->PinType.PinCategory == UEdGraphSchema_K2::PC_Text)
+            {
+                Schema->TrySetDefaultText(*Input, FText::FromString(Value)); return true;
+            }
+            // Scalar and soft-reference inputs use the schema string setter.
             const FName Category = Input->PinType.PinCategory;
             // K2 accepts arbitrary bool text as false; reject typos at this external-input boundary.
             if (Category == UEdGraphSchema_K2::PC_Boolean && Value != TEXT("true") && Value != TEXT("false"))
                 return Reject(TEXT("Boolean defaults must be true or false"));
             if (Category != UEdGraphSchema_K2::PC_Boolean && Category != UEdGraphSchema_K2::PC_Int &&
                 Category != UEdGraphSchema_K2::PC_Real && Category != UEdGraphSchema_K2::PC_String &&
-                Category != UEdGraphSchema_K2::PC_Name && Category != UEdGraphSchema_K2::PC_Struct && Category != UEdGraphSchema_K2::PC_Byte)
+                Category != UEdGraphSchema_K2::PC_Name && Category != UEdGraphSchema_K2::PC_Struct && Category != UEdGraphSchema_K2::PC_Byte && Category != UEdGraphSchema_K2::PC_Int64 && Category != UEdGraphSchema_K2::PC_SoftObject && Category != UEdGraphSchema_K2::PC_SoftClass)
                 return Reject(TEXT("Unsupported pin default type"));
             const FString Invalid = Schema->IsPinDefaultValid(Input, Value, nullptr, FText());
             if (!Invalid.IsEmpty()) return Reject(Invalid);
@@ -830,8 +1079,8 @@ static FString ApplyPatchInternal(const FString& AssetPath, const FString& Patch
     UBlueprint* Source = LoadObject<UBlueprint>(nullptr, *AssetPath);
     if (!Source || !Source->ParentClass) return Fail(Out, TEXT("Blueprint or parent not found"));
     // UMG graph edits use the registered Widget compiler; Designer mutation remains out of scope.
-    if ((Source->GetClass() != UBlueprint::StaticClass() && Source->GetClass() != UWidgetBlueprint::StaticClass()) || Source->BlueprintType != BPTYPE_Normal)
-        return Fail(Out, TEXT("Only normal Blueprint and Widget Blueprint assets are supported"));
+    if ((Source->GetClass() != UBlueprint::StaticClass() && Source->GetClass() != UWidgetBlueprint::StaticClass()) || (Source->BlueprintType != BPTYPE_Normal && Source->BlueprintType != BPTYPE_FunctionLibrary && Source->BlueprintType != BPTYPE_Interface))
+        return Fail(Out, TEXT("Supported assets: normal Blueprint, Widget, function library and interface"));
     const bool bSaveCopy = !DestinationPackage.IsEmpty();
     const bool bSave = bWriteSource || bSaveCopy;
     if (bSaveCopy && (!DestinationPackage.StartsWith(TEXT("/Game/")) || !FPackageName::IsValidLongPackageName(DestinationPackage)))
@@ -878,6 +1127,15 @@ static FString ApplyPatchInternal(const FString& AssetPath, const FString& Patch
         if (SourceNode && CopyNode && SourceNode->IsIn(Source) && CopyNode->IsIn(Copy))
         {
             Context.SourceNodes.Add(SourceNode->GetGraph()->GetPathName(Source) + TEXT("|") + SourceNode->NodeGuid.ToString(), CopyNode);
+            // Event PostDuplicate can rebind an interface override to the new self class.
+            // Keep the declared external contract, not the temporary generated implementation.
+            if (auto* SourceEvent = Cast<UK2Node_Event>(SourceNode))
+                if (SourceEvent->bOverrideFunction)
+                    if (auto* CopyEvent = Cast<UK2Node_Event>(CopyNode))
+                    {
+                        CopyEvent->EventReference = SourceEvent->EventReference;
+                        CopyEvent->UpdateDelegatePin(true);
+                    }
             // Package metadata is not part of StaticDuplicateObjectEx's object property copy.
             if (auto* SourceComment = Cast<UEdGraphNode_Comment>(SourceNode))
                 if (!FindFProperty<FTextProperty>(SourceComment->GetClass(), TEXT("NodeDetails")))
@@ -926,7 +1184,14 @@ static FString ApplyPatchInternal(const FString& AssetPath, const FString& Patch
                 const bool bSaved = UPackage::SavePackage(Package, Copy, *Filename, Args);
                 Out->SetBoolField(TEXT("saved"), bSaved);
                 Out->SetBoolField(TEXT("success"), bSaved);
-                if (bSaved && !bWriteSource) FAssetRegistryModule::AssetCreated(Copy);
+                if (bSaved)
+                {
+                    // Saving can assign persistent FText identities; report the post-save state.
+                    Out->SetObjectField(TEXT("blueprint"), Describe(Copy));
+                    if (!bWriteSource) FAssetRegistryModule::AssetCreated(Copy);
+                    // Make immediate cross-asset impact queries observe this saved package.
+                    FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get().ScanFilesSynchronous({Filename}, true);
+                }
                 if (!bSaved)
                 {
                     if (bWriteSource)
@@ -970,4 +1235,61 @@ FString UBlueprintWorkbenchLibrary::ApplyPatchToSavedAsset(const FString& AssetP
     if (!FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Preview), PreviewResult) || !PreviewResult->GetBoolField(TEXT("success")))
         return Preview;
     return ApplyPatchInternal(AssetPath, PatchJson, TEXT(""), true);
+}
+
+FString UBlueprintWorkbenchLibrary::CreateBlueprint(const FString& Kind, const FString& ParentClass, const FString& PatchJson, const FString& DestinationPackage)
+{
+    using namespace BlueprintWorkbench;
+    if (!IsInGameThread()) return Fail(Result(), TEXT("Must run on the editor game thread"));
+    EBlueprintType Type = BPTYPE_Normal;
+    UClass* Parent = nullptr;
+    if (Kind == TEXT("function_library")) { Type = BPTYPE_FunctionLibrary; Parent = UBlueprintFunctionLibrary::StaticClass(); }
+    else if (Kind == TEXT("interface")) { Type = BPTYPE_Interface; Parent = UInterface::StaticClass(); }
+    else if (Kind == TEXT("normal")) Parent = LoadObject<UClass>(nullptr, *ParentClass);
+    else return Fail(Result(), TEXT("kind must be normal, function_library or interface"));
+    if (!Parent || (Type == BPTYPE_Normal && !FKismetEditorUtilities::CanCreateBlueprintOfClass(Parent))) return Fail(Result(), TEXT("Invalid Blueprint parent"));
+    const FString SeedName = TEXT("/Temp/WorkbenchSeed_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
+    UPackage* Package = CreatePackage(*SeedName);
+    Package->SetFlags(RF_Transient);
+    TStrongObjectPtr<UBlueprint> Seed(FKismetEditorUtilities::CreateBlueprint(Parent, Package, *FPackageName::GetLongPackageAssetName(SeedName), Type));
+    if (!Seed.IsValid()) return Fail(Result(), TEXT("Could not create Blueprint"));
+    const FString ResultJson = ApplyPatchInternal(Seed->GetPathName(), PatchJson, DestinationPackage, false);
+    Seed->ClearFlags(RF_Public | RF_Standalone); Package->SetDirtyFlag(false);
+    return ResultJson;
+}
+
+FString UBlueprintWorkbenchLibrary::FindMemberReferences(const FString& AssetPath, const FString& MemberName)
+{
+    using namespace BlueprintWorkbench;
+    FObject Out = Result();
+    if (!IsInGameThread()) return Fail(Out, TEXT("Must run on editor game thread"));
+    UBlueprint* BP = LoadObject<UBlueprint>(nullptr, *AssetPath);
+    if (!BP || !BP->GeneratedClass || MemberName.IsEmpty()) return Fail(Out, TEXT("Blueprint and member name required"));
+    auto& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
+    Registry.SearchAllAssets(true);
+    TArray<FName> Packages; Registry.GetReferencers(BP->GetOutermost()->GetFName(), Packages);
+    Packages.AddUnique(BP->GetOutermost()->GetFName());
+    FValues Candidates, References;
+    for (const FName Package : Packages)
+    {
+        Candidates.Add(MakeShared<FJsonValueString>(Package.ToString()));
+        UBlueprint* Candidate = LoadObject<UBlueprint>(nullptr, *(Package.ToString() + TEXT(".") + FPackageName::GetLongPackageAssetName(Package.ToString())));
+        if (!Candidate) continue;
+        TArray<UEdGraph*> Graphs; Candidate->GetAllGraphs(Graphs);
+        for (UEdGraph* G : Graphs) for (UEdGraphNode* N : G->Nodes)
+        {
+            const FMemberReference* Ref = nullptr;
+            if (auto* Call = Cast<UK2Node_CallFunction>(N)) Ref = &Call->FunctionReference;
+            if (auto* Var = Cast<UK2Node_Variable>(N)) Ref = &Var->VariableReference;
+            if (auto* Delegate = Cast<UK2Node_BaseMCDelegate>(N)) Ref = &Delegate->DelegateReference;
+            if (auto* Event = Cast<UK2Node_Event>(N)) Ref = &Event->EventReference;
+            if (!Ref || Ref->GetMemberName() != FName(*MemberName)) continue;
+            UClass* Owner = Ref->GetMemberParentClass(Candidate->GeneratedClass);
+            if (Owner != BP->GeneratedClass && Owner != BP->SkeletonGeneratedClass && !(Candidate == BP && Ref->IsSelfContext())) continue;
+            FObject Item = MakeShared<FJsonObject>(); Item->SetStringField(TEXT("asset"), Candidate->GetPathName()); Item->SetStringField(TEXT("graph"), G->GetPathName(Candidate)); Item->SetStringField(TEXT("node"), N->NodeGuid.ToString()); References.Add(MakeShared<FJsonValueObject>(Item));
+        }
+    }
+    Out->SetArrayField(TEXT("candidate_packages"), Candidates); Out->SetArrayField(TEXT("references"), References);
+    Out->SetStringField(TEXT("scope"), TEXT("Saved asset-registry package referencers and direct function/variable K2 references; excludes unsaved editors, soft-name references and non-Blueprint assets"));
+    Out->SetBoolField(TEXT("success"), true); return Json(Out);
 }

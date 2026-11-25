@@ -82,7 +82,7 @@ check("duplicate variable rejected", not duplicate["success"])
 check("invalid JSON rejected", not json.loads(lib.apply_patch(source_path, "{bad"))["success"])
 check("missing pin rejected", not patch(ops + [{"op": "set_default", "graph": "EventGraph", "node": "set_flag", "pin": "missing", "value": "true"}])["success"])
 check("unknown operation rejected", not patch([{"op": "unknown", "graph": "EventGraph"}])["success"])
-check("unsupported container rejected", not patch([{"op": "add_variable", "name": "Bad", "type": "bool", "container": "array"}])["success"])
+check("unsupported container rejected", not patch([{"op": "add_variable", "name": "Bad", "type": "bool", "container": "invalid"}])["success"])
 check("invalid scalar default rejected", not patch(ops + [{"op": "set_default", "graph": "EventGraph", "node": "set_flag", "pin": "WorkbenchFlag", "value": "not_a_boolean"}])["success"])
 types = patch([{"op": "add_variable", "name": "Value_" + t, "type": t} for t in ("int", "float", "double", "string", "name")] + [{"op": "add_variable", "name": "OwnerActor", "type": "object", "object": "/Script/Engine.Actor"}])
 check("supported scalar and object variable types compile", types["success"])
@@ -139,6 +139,47 @@ check('unscoped call refresh rejected', not patch([{'op':'refresh_calls'}])['suc
 map_result = patch([{'op':'add_variable','name':'Identities','type':'name','container':'map','value_object':'/Script/CoreUObject.Guid'}])
 check('map member retains key and struct value reflection', map_result['success'] and map_result['blueprint']['variables'][0]['type']['container']==3)
 
+# Local defaults, editor-callable functions/events and native Make Array.
+feature_ops = [
+    {'op':'signature','name':'EditorUtility','parameters':[
+        {'name':'Enabled','type':'bool','direction':'local','default':'false'},
+        {'name':'Amount','type':'float','direction':'local','default':'2.5'},
+        {'name':'Label','type':'string','direction':'local','default':'Workbench'},
+        {'name':'Count','type':'int','direction':'local','default':'7'},
+        {'name':'Offset','type':'struct','object':'/Script/CoreUObject.Vector','direction':'local','default':'(X=1,Y=2,Z=3)'}]},
+    {'op':'set_local_default','graph':'EditorUtility','variable':'Enabled','value':'true'},
+    {'op':'set_call_in_editor','graph':'EditorUtility','value':True},
+    {'op':'set_call_in_editor','graph':'EventGraph','node':'start','value':True},
+    node('make_array','bool_array',num_inputs=2),
+    link('get_flag','WorkbenchFlag','bool_array','[0]'),
+    {'op':'set_default','graph':'EventGraph','node':'bool_array','pin':'[1]','value':'true'},
+]
+features = patch(ops + feature_ops)
+check('local defaults editor flags and Make Array compile', features['success'] and features['compile_warnings']==0)
+from TestWorkbenchFeatures import verify_features
+verify_features(features['blueprint'])
+check('inspection exports local values editor flags and typed array pins', True)
+for label, operation in [
+    ('missing local', {'op':'set_local_default','graph':'EditorUtility','variable':'Missing','value':'true'}),
+    ('invalid local bool', {'op':'set_local_default','graph':'EditorUtility','variable':'Enabled','value':'typo'}),
+    ('non-string local default', {'op':'set_local_default','graph':'EditorUtility','variable':'Enabled','value':True}),
+    ('invalid editor flag', {'op':'set_call_in_editor','graph':'EditorUtility','value':'true'}),
+    ('editor flag on ordinary node', {'op':'set_call_in_editor','graph':'EventGraph','node':'get_flag','value':True}),
+    ('negative array count', node('make_array','bad_array',num_inputs=-1)),
+    ('string array count', node('make_array','bad_array',num_inputs='2')),
+    ('fractional array count', node('make_array','bad_array',num_inputs=1.5)),
+    ('oversized array count', node('make_array','bad_array',num_inputs=1025)),
+    ('non-string initial default', {'op':'signature','name':'BadDefault','parameters':[{'name':'L','type':'bool','direction':'local','default':True}]}),
+    ('output declaration default unsupported', {'op':'signature','name':'BadInput','parameters':[{'name':'L','type':'bool','direction':'output','default':'true'}]}),
+]:
+    check(label + ' rejected without saving', not patch(ops + feature_ops + [operation])['success'])
+disabled = patch(ops + feature_ops + [
+    {'op':'set_call_in_editor','graph':'EditorUtility','value':False},
+    {'op':'set_call_in_editor','graph':'EventGraph','node':'start','value':False}])
+check('editor flags can be unchecked', disabled['success'] and all(not n.get('call_in_editor',False) for g in disabled['blueprint']['graphs'] for n in g['nodes']))
+check('feature previews preserve source', json.loads(lib.inspect_blueprint(source_path))['blueprint'] == baseline)
+ops.extend(feature_ops)
+
 # Engine-owned parent contracts: no game module or fixture native class required.
 factory.set_editor_property("parent_class", unreal.UserWidget)
 widget = unreal.AssetToolsHelpers.get_asset_tools().create_asset("WBP_Source", package_dir, unreal.WidgetBlueprint, unreal.WidgetBlueprintFactory())
@@ -168,7 +209,8 @@ fixture_file = root / "Content" / "__BlueprintWorkbenchTests" / run_id / "BP_Pat
 check("saved package exists", fixture_file.is_file())
 bad_write = json.loads(lib.apply_patch_to_saved_asset(destination, '{"operations":[{"op":"unsupported"}]}'))
 check('writeback preflight failure does not save or create backup', not bad_write['success'] and not bad_write['saved'] and 'backup_file' not in bad_write)
-write_patch = {'operations':[{'op':'set_default','graph':'EventGraph','node':saved['aliases']['set_flag'],'pin':'WorkbenchFlag','value':'false'}]}
+write_patch = {'operations':[{'op':'set_default','graph':'EventGraph','node':saved['aliases']['set_flag'],'pin':'WorkbenchFlag','value':'false'},
+    {'op':'set_local_default','graph':'EditorUtility','variable':'Count','value':'9'}]}
 temporary = '/Game/Workbench/TemporaryTest_'+run_id+'/BP_Review'
 temporary_result = json.loads(lib.apply_patch(destination,json.dumps(write_patch),temporary))
 check('temporary review fixture saved', temporary_result['success'] and temporary_result['saved'])

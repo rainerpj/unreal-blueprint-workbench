@@ -2,8 +2,10 @@
 
 通过 JSON 补丁检查、编辑、编译与备份写回 Unreal Engine 蓝图的 Editor 插件。当前版本 **0.4.1**，核心功能主要验证版本 **UE 5.5.4**，同时验证 **UE 5.7.4**。本仓库继续原 0.3 的提交历史，是唯一维护入口。预编译分发的验证情况单独记录在兼容矩阵中。
 
-## main 分支新增功能（2026-11-23）
+## main 分支新增功能（2026-11-25）
 
+- 普通蓝图、Function Library 和 Blueprint Interface 创建；接口实现／消息、类型容器与默认值、函数属性与参数、事件／Dispatcher、动态引脚及受控重构。见 [JSON 补丁格式](Plugins/BlueprintWorkbench/Docs/PATCH_FORMAT.md)。
+- 局部变量默认值、Call in Editor、Make Array；Set Members 遵循原生结构体支持范围，Vector 等使用原生 Make＋赋值。
 - 跨组长线与估算交叉检查、保形平移，以及受限的成员读取／Self就近复制；用法见[插件手册](Plugins/BlueprintWorkbench/README.md)。
 - 可选 [Blueprint Assist 编辑器桥接](Plugins/BlueprintWorkbenchAssist/README.md)：直接调用另行安装的 Blueprint Assist 整理指定函数，另提供显式函数／事件／宏入口批次、保守无用节点清理和独立重载；支持普通／Widget及动画蓝图中的 K2 逻辑图，保留预览、逻辑核对和备份。
 
@@ -30,10 +32,10 @@ Tools 下保留 Invoke 与 Validate 两个 PowerShell 转发入口；它们要�
 
 普通 Blueprint／Widget K2 逻辑图的读取、变量、部分节点、显式连线与断线、副本编译保存、带备份的原资产写回、独立进程核对、入口分组排版／块注释及保守旧节点清理。不提供任意图编辑器或 MCP 服务。
 
-- UE 5.5.4：构建／加载及 65 项集成检查、7 项 CLI 流程通过。
-- UE 5.7.4：构建／加载及 65 项集成检查通过；0.4.1 UAT Win64 包在全新纯蓝图宿主通过 65 项集成和 7 项 CLI 检查。
-- Python 算法／清理边界测试：17 项通过；CI 不构建 Unreal。
-- UE 5.5.4 的 UAT 分发被本机 PicoSpatialAudio 阻断；5.4 环境不完整；其他版本、其他平台、原生画布视觉、正式项目玩法／PIE／设备未验。
+- 当前源码：UE 5.5.4 与 5.7.4 分别重新构建，各 **124 项集成检查通过**，包括保存、备份写回和独立进程重载；另一个 UE5.5 安装宿主同样通过124项，两阶段重载0错误0警告。
+- 提交前执行与 CI 对应的 **49 项 Python 测试**及源码／预编译安装契约检查，全部通过；CI 不构建 Unreal。
+- 既有 0.4.1 Release 的 UE5.7.4 Win64 包验收为65项集成＋7项CLI；该附件不包含当前源码新增能力。UE5.5.4 的旧 UAT 分发受环境插件阻断，没有本轮新预编译附件。
+- 测试包含预期负例及宿主环境警告；未覆盖所有类型组合、原生 UI、PIE、游戏打包、设备或其他平台。精简证据见 [本轮验证摘要](Plugins/BlueprintWorkbench/Docs/validation/2026-11-25-vector-fix-summary.json)。
 
 完整 [兼容矩阵](Plugins/BlueprintWorkbench/Docs/COMPATIBILITY.md)、[JSON 补丁格式](Plugins/BlueprintWorkbench/Docs/PATCH_FORMAT.md) 与 [AI 主程调用约定](docs/AGENT_USAGE.md)。Material、Niagara、Anim Blueprint 与通用 UMG Designer 编辑不在本版范围内。
 

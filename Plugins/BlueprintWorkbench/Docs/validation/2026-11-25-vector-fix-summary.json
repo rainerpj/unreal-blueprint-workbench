@@ -1,0 +1,47 @@
+{
+  "date": "2026-11-25",
+  "fix": "Reject unsupported native-make structs for Set Members using engine CanBeMade; retain original native node and serialization",
+  "engines": {
+    "5.5.4": {
+      "build": "passed",
+      "checks": 124,
+      "compatibility_conversion_errors": 0,
+      "regression_checks": [
+        "Set Members in Struct and class/text pin defaults compile",
+        "native-make Set Members unsupported rejected",
+        "supported Set Members executes field mutation",
+        "supported Set Members mutation survives independent reload"
+      ]
+    },
+    "5.7.4": {
+      "build": "passed",
+      "checks": 124,
+      "compatibility_conversion_errors": 0,
+      "regression_checks": [
+        "Set Members in Struct and class/text pin defaults compile",
+        "native-make Set Members unsupported rejected",
+        "supported Set Members executes field mutation",
+        "supported Set Members mutation survives independent reload"
+      ]
+    }
+  },
+  "limits": [
+    "No native UI/PIE/game packaging/device validation",
+    "Existing gameplay assets not rewritten"
+  ],
+  "installed_ue55_host": {
+    "status": "passed",
+    "checks": 124,
+    "compatibility_conversion_errors": 0,
+    "independent_reload_errors": 0,
+    "independent_reload_warnings": 0,
+    "other_warnings": "expected negative tests (missing types and duplicate interface)"
+  },
+  "evidence_note": "Summary only; full logs, backups and test assets are not distributed.",
+  "publication_checks": {
+    "python_ci_suite": {
+      "passed": 49
+    },
+    "distribution_contracts": "passed (source install, overwrite refusal, binary payload, BuildId rejection, source ZIP)"
+  }
+}

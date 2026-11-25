@@ -1,0 +1,52 @@
+{
+  "date": "2026-11-25",
+  "engines": {
+    "5.5.4": {
+      "build": "passed",
+      "checks": 121,
+      "advanced_checks": 40,
+      "core_checks": 81,
+      "independent_reload": "passed"
+    },
+    "5.7.4": {
+      "build": "passed",
+      "checks": 121,
+      "advanced_checks": 40,
+      "core_checks": 81,
+      "independent_reload": "passed"
+    }
+  },
+  "python_unit_tests": 34,
+  "cli": [
+    "function-library creation and independent finalize passed",
+    "read-only member reference query passed"
+  ],
+  "limits": [
+    "no native editor UI acceptance",
+    "no PIE or game packaging",
+    "no device acceptance",
+    "not all type/node combinations exhaustively tested"
+  ],
+  "review": {
+    "correctness": "Reviewed CreateBlueprint -> ApplyPatchInternal -> operations -> compile/save -> independent reload; ReadType/ValidateValue; signature/interface refresh; replacement endpoint transfer; saved-package references. Fixed interface override rebinding during duplication, new return-pin default initialization, same-patch old GUID resolution after replacement and immediate dependency-index refresh after saving.",
+    "necessity": "Reuses UE native nodes, property import and graph utilities. One shared type/value boundary; interface operations restricted to declarations. Existing backup/preview/save flow retained. No runtime module, automatic cross-asset writes or generalized arbitrary deletion."
+  },
+  "installed_ue55_host": {
+    "status": "passed",
+    "checks": 121,
+    "engine": "5.5.4",
+    "steps_exit_codes": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "native_plugin_rebuild": "passed in UE5.5 native host",
+    "project_validate": "passed; target up to date",
+    "warnings": [
+      "Expected missing-type and duplicate-interface negative-case warnings",
+      "Native BackwardCompatibilityNodeConversion: cannot find pin execute in node Make Vector; independent semantic verification and compilation passed"
+    ]
+  },
+  "evidence_note": "Historical validation snapshot; full logs and backups retained locally. Latest results are in 2026-11-25-vector-fix-summary.json."
+}
