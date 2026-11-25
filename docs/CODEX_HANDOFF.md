@@ -2,6 +2,10 @@
 
 更新：2026-11-25。维护仓库为 rainerpj/unreal-blueprint-workbench；当前版本为0.5.0，新增功能及UE5.5／5.7预编译分发的验证范围见兼容矩阵；旧0.4.1附件不包含本轮新增能力。
 
+## 后台整理工作流（0.5.0发布后文档更新）
+
+蓝图连线／节点格式化默认通过隐藏的 BlueprintWorkbenchAssist 完整编辑器桥接执行，不使用 Computer Use 或模拟键鼠；桥接失败先排查依赖／构建，不自动切换UI或其他布局算法。调用约定见 docs/AGENT_USAGE.md 和桥接README。已核对 Invoke-Assist 的隐藏／RenderOffscreen启动及批量脚本入口；此轮仅同步指令文档，未改代码或资产、未重复运行引擎测试，未重打已有Release附件。
+
 ## 当前实现
 
 - 普通蓝图／Function Library／Blueprint Interface 创建，接口实现、事件及消息；统一成员、局部和参数类型，Array／Set／Map、默认值和函数属性；自定义事件、Dispatcher、常用节点、引脚编辑、重命名和受控节点替换。

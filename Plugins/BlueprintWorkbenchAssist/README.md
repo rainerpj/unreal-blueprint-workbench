@@ -2,6 +2,10 @@
 
 Optional editor plugin, requiring a separately installed and licensed Blueprint Assist. No Blueprint Assist code or binaries are included. Keep the normal BlueprintWorkbench plugin enabled. This adapter is `EditorNoCommandlet` and does not affect the original commandlet APIs.
 
+## Default execution route
+
+Use this bridge in the background for Blueprint wire/node formatting. Do not use Computer Use, simulated F-key presses, or mouse dragging unless the user explicitly requests a different execution method. Single functions use `Invoke-Assist.ps1`; explicit batches use `RunBatchAssist.py` and independent `FinalizeBatchAssist.py`. Launch batch editors hidden (`Start-Process -WindowStyle Hidden`) with `-RenderOffscreen`; formatting requires full-editor Slate, not a commandlet or NullRHI. Review generated graph PNGs directly. A missing/failed bridge calls for dependency/build diagnosis, not an automatic UI-automation or alternate-layout fallback.
+
 ## Scope
 
 The single-function runner supports a named K2 **function graph with one entry**, including Widget Blueprint function graphs. The explicit batch runner also supports event roots, pure functions, macros/collapsed K2 graphs, Animation Blueprint K2 event graphs, and embedded level Blueprints. It does not format animation state machines or animation pose graphs. It opens that exact graph, waits for Blueprint Assist's real Slate node-size cache, then invokes `FBAGraphHandler::FormatNodes` on its entry. It does not call the Workbench layout algorithm, duplicate gameplay nodes, or refactor logic. Blueprint Assist may add/remove reroute nodes and reposition/resize comments.

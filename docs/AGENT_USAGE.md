@@ -12,9 +12,18 @@
 工具手册位于 `Plugins/BlueprintWorkbench/README.md`，调用与测试脚本位于插件内 `Scripts/`。命令显式指定 ProjectFile 与 EngineRoot；Tools 下仅保留两个 PowerShell 转发入口。项目专用批量脚本留在对应项目，调用这里的通用接口。
 
 
+## 后台桥接整理约定
+
+整理蓝图连线、节点布局或执行 Blueprint Assist 格式化时，默认通过 BlueprintWorkbenchAssist 在后台直接调用 Blueprint Assist；不使用 Computer Use 点击画布、模拟按键或拖动节点。除非用户明确改变执行方式，不自动退回 UI 操作。
+
+- 单函数使用 `Scripts/Invoke-Assist.ps1`；显式批次使用 `Scripts/RunBatchAssist.py` 和 `WORKBENCH_BATCH_REQUEST`，随后独立运行 `FinalizeBatchAssist.py`。脚本位于 BlueprintWorkbenchAssist 插件目录。
+- 格式化需要带真实 Slate 的完整编辑器：后台启动 `UnrealEditor.exe`，使用 `-RenderOffscreen`，PowerShell `Start-Process -WindowStyle Hidden`。后台不等于 commandlet／NullRHI；不要用后两者执行 BA 格式化。
+- 先核对目标项目、插件与匹配版本的 Blueprint Assist。保留预览、语义核对、备份、显式写回和独立重载；视觉核对优先读取桥接生成的原生图 PNG，不为截图改用 Computer Use。
+- 缺少桥接、依赖或能力时，先在授权范围内修复安装／构建；仍不可用则报告具体阻塞，不自行改成鼠标操作或其他排版算法。写回前处理编辑器占用和未保存内容，不强关用户编辑器。
+
 ## 可读性验收补充
 
-- 一读多用且距离较远时，授权的可读性整理使用 `mode=readability`，优先考虑引擎认证的直接变量读取／Self就近副本；不能以 Pure 标志推断函数可复制。
+- 仅当用户明确要求算法式可读性重构（区别于默认桥接格式化）时，一读多用且距离较远的处理使用 `mode=readability`，优先考虑引擎认证的直接变量读取／Self就近副本；不能以 Pure 标志推断函数可复制。
 - 长线与交叉必须同时审查，查看 report 的 estimated_crossings、long_edges、copies、skipped；无法安全处理就明确保留，不通过复制执行节点或缓存变量改变语义。
 - 保留原有精确逻辑核对；读取副本必须通过专门等价归一化核对。几何交叉指标不是原生画布验收。仅改工具的任务不得顺带修改游戏资产。
 

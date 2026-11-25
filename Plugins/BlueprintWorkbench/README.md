@@ -44,6 +44,10 @@
 
 纯蓝图项目不能直接加载未编译的源码插件。优先使用匹配的预编译包；没有对应包时，可添加 C++ 类获得 Editor Target，再构建，或由具备工具链的开发者按下文生成分发包。实际验证范围以兼容矩阵为准。
 
+## 蓝图连线整理默认方式
+
+节点／连线格式化默认使用独立的 BlueprintWorkbenchAssist 后台桥接，不使用 Computer Use、模拟F键或拖动画布。单函数使用桥接的 `Scripts/Invoke-Assist.ps1`；批量使用 `RunBatchAssist.py`／`FinalizeBatchAssist.py`。桥接启动隐藏的完整编辑器并使用 `-RenderOffscreen`，依赖真实Slate，不能以commandlet／NullRHI代替格式化。保留预览、语义核对、备份、授权写回和独立重载；桥接不可用时先处理依赖／构建，不自动回退UI操作。核心预编译包不含此可选桥接或第三方Blueprint Assist。
+
 ## 使用
 
 所有 CLI 显式指定目标工程和引擎，不从当前目录猜测工程，不硬编码引擎安装路径。
