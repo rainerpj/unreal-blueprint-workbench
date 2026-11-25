@@ -1,8 +1,8 @@
 # Blueprint Workbench 通用化交接
 
-当前源码更新（2026-11-25）包括函数库／接口创作、类型与参数编辑及 Set Members 兼容修复；两版引擎各124项检查通过。使用方式见 [PATCH_FORMAT.md](PATCH_FORMAT.md)，最新证据见 [COMPATIBILITY.md](COMPATIBILITY.md)。以下保留0.4.1发布时的历史边界，不能当作当前源码限制。
+当前0.5.0版本（2026-11-25）包括函数库／接口创作、类型与参数编辑及 Set Members 兼容修复；两版引擎各124项检查通过。使用方式见 [PATCH_FORMAT.md](PATCH_FORMAT.md)，最新证据见 [COMPATIBILITY.md](COMPATIBILITY.md)。以下保留0.4.1发布时的历史边界，不能当作当前源码限制。
 
-更新：2026-11-20。当前为 0.4.1，采用 MIT。完整版本证据以 [COMPATIBILITY.md](COMPATIBILITY.md) 为准；发布与附件以[原仓库 Release](https://github.com/rainerpj/unreal-blueprint-workbench/releases/tag/v0.4.1)为准。
+历史更新：2026-11-20。当时为0.4.1，采用MIT。完整版本证据以 [COMPATIBILITY.md](COMPATIBILITY.md) 为准；发布与附件以[原仓库 Release](https://github.com/rainerpj/unreal-blueprint-workbench/releases/tag/v0.4.1)为准。
 
 ## 0.4.1 分发更新
 

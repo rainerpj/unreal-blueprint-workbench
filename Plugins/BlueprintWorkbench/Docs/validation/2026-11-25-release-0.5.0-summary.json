@@ -1,0 +1,29 @@
+{
+  "date": "2026-11-25",
+  "version": "0.5.0",
+  "platform": "Win64",
+  "engines": {
+    "5.5.4": {
+      "uat_build": "passed",
+      "blueprint_only_host": true,
+      "installed_from_zip": true,
+      "integration_checks": 124,
+      "build_id": "37670630",
+      "cli_checks": 7
+    },
+    "5.7.4": {
+      "uat_build": "passed",
+      "blueprint_only_host": true,
+      "installed_from_zip": true,
+      "integration_checks": 124,
+      "build_id": "47537391",
+      "cli_checks": 7
+    }
+  },
+  "limits": [
+    "Same-machine fresh hosts, not a clean-machine acceptance",
+    "No native editor UI/PIE/game packaging/device or other-platform acceptance",
+    "Expected negative-case and host environment warnings retained in local logs"
+  ],
+  "distribution_contract_tests": "passed"
+}

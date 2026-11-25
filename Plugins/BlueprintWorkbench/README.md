@@ -1,4 +1,4 @@
-# Blueprint Workbench 0.4.1
+# Blueprint Workbench 0.5.0
 
 本插件代码采用 [MIT 许可证](LICENSE)。Unreal Engine 本身不包含在本授权中。
 
@@ -10,7 +10,7 @@
 
 ### 预编译 ZIP（无需 Visual Studio）
 
-从仓库 Releases 选择与 **UE 完整版本及引擎构建一致的 Win64 包**。GitHub 的 `Source code.zip` 是源码，不是预编译包。如果尚未发布所需版本的附件，请使用下面的源码安装流程，不要混用相邻版本 DLL。
+[v0.5.0 Release](https://github.com/rainerpj/unreal-blueprint-workbench/releases/tag/v0.5.0) 提供 UE5.5.4（BuildId 37670630）与 UE5.7.4（BuildId 47537391）的 Win64 包、源码 ZIP 和 SHA256SUMS.txt。从中选择与 **UE 完整版本及引擎构建一致的 Win64 包**。GitHub 的 `Source code.zip` 是源码，不是预编译包。如果尚未发布所需版本的附件，请使用下面的源码安装流程，不要混用相邻版本 DLL。
 
 关闭目标项目编辑器，解压发行 ZIP，在解压出的插件目录运行（需要 PowerShell 7）：
 
@@ -149,6 +149,6 @@ Requires rebuilt plugin code for `localizable_read` inspection and `add_node(kin
 
 Tests: `python -m unittest TestPresentation TestCrossGroup TestReadability`; isolated `WorkbenchHost` UE scripts `TestReadabilityUE.py` and then `TestReadabilityReload.py`. Never point fixture tests at a production project. Actual Slate visual quality still needs editor inspection on a future authorized asset pass.
 
-### main 分支新增的创作能力
+### 0.5.0 新增的创作能力
 
-函数库／接口／普通蓝图创建、统一容器与引用类型、成员及局部默认值、函数属性、带参数事件和 Dispatcher、接口实现／消息、常用控制流节点、动态／拆分引脚及受控重命名／替换均从现有补丁流程进入。用法见 [PATCH_FORMAT](Docs/PATCH_FORMAT.md)，跨资产测试为 TestAdvancedWorkbench.py 与 TestAdvancedWorkbenchReload.py。旧 0.4.1 Release 附件不包含这些未发布源码更新。
+函数库／接口／普通蓝图创建、统一容器与引用类型、成员及局部默认值、函数属性、带参数事件和 Dispatcher、接口实现／消息、常用控制流节点、动态／拆分引脚及受控重命名／替换均从现有补丁流程进入。用法见 [PATCH_FORMAT](Docs/PATCH_FORMAT.md)，跨资产测试为 TestAdvancedWorkbench.py 与 TestAdvancedWorkbenchReload.py。这些能力纳入0.5.0；旧0.4.1 Release附件不包含它们。

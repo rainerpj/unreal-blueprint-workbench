@@ -1,5 +1,11 @@
 # 兼容矩阵
 
+## 2026-11-25：0.5.0 预编译分发
+
+UE5.5.4（BuildId 37670630）与 UE5.7.4（BuildId 47537391）的 Win64 包均通过 UAT BuildPlugin；从 ZIP 安装到全新纯蓝图宿主，各124项集成检查及7项CLI检查通过。
+
+[0.5.0 Release](https://github.com/rainerpj/unreal-blueprint-workbench/releases/tag/v0.5.0) 附件为核心 BlueprintWorkbench 的两版预编译包、源码包及SHA256校验文件，不包含第三方 Blueprint Assist。使用同机新宿主验证，不是干净机器验收；原生UI／PIE／游戏打包／设备和其他平台未验证。完整日志仅保留本地，公开[精简分发摘要](validation/2026-11-25-release-0.5.0-summary.json)。UE5.5构建时临时隔离了本机缺少规则的PICO插件，结束后恢复，未修改分发插件依赖或游戏配置。
+
 ## 2026-11-25：Set Members 兼容转换修复
 
 UE5.5.4／5.7.4 重新编译成功，各124项检查通过；无 BackwardCompatibilityNodeConversion Error。UE5.5宿主 安装版124项通过，两个独立重载阶段0错误0警告。新增受支持结构体的实际执行／独立重载回归，以及 Vector Set Members 拒绝测试。早先121项测试中的未接执行线 Vector 节点不能证明可执行，现改为遵循原生 CanBeMade 边界；Vector 等应使用原生 Make＋变量赋值。完整证据见 [修复摘要](validation/2026-11-25-vector-fix-summary.json)。宿主仍有既有环境警告，不称全进程零警告。

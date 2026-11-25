@@ -1,5 +1,7 @@
 # 验证记录
 
+0.5.0 两版Win64预编译包已完成UAT构建与新纯蓝图宿主ZIP安装验证，各124项集成检查通过；详情见[分发摘要](../Plugins/BlueprintWorkbench/Docs/validation/2026-11-25-release-0.5.0-summary.json)。
+
 当前 main 源码验证（2026-11-25）：UE5.5.4／5.7.4 重新构建，各124项集成检查通过；另一个UE5.5安装宿主124项通过，两阶段独立重载0错误0警告。提交前49项Python测试及分发安装契约检查通过。详见 [兼容矩阵](../Plugins/BlueprintWorkbench/Docs/COMPATIBILITY.md) 与 [精简结果](../Plugins/BlueprintWorkbench/Docs/validation/2026-11-25-vector-fix-summary.json)。
 
 本页仅发布汇总结论；完整日志、测试资产、备份和本机路径不上传。当前源码更新不包含在既有0.4.1 Release附件中，未做本轮原生UI／PIE／游戏打包／设备验收。以下保留0.3初次提取记录，不代表当前验证上限。
