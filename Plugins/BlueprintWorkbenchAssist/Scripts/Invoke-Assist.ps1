@@ -34,7 +34,8 @@ try {
     $result = Get-Content -LiteralPath (Join-Path $OutputDirectory 'result.json') -Raw | ConvertFrom-Json
     if (-not $result.success) { throw "Bridge failed: $($result.error). Evidence: $OutputDirectory" }
     if ($WriteBack) {
-        & (Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe') $ProjectFile -run=pythonscript "-script=$PSScriptRoot/FinalizeAssist.py" -unattended -nop4 -NullRHI -nosound "-abslog=$OutputDirectory/finalize.log" *> "$OutputDirectory/finalize-console.log"
+        $finalizeScript = (Join-Path $PSScriptRoot 'FinalizeAssist.py').Replace('\','/')
+        & (Join-Path $EngineRoot 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe') $ProjectFile -run=pythonscript "-script=$finalizeScript" -unattended -nop4 -NullRHI -nosound "-abslog=$OutputDirectory/finalize.log" *> "$OutputDirectory/finalize-console.log"
         if ($LASTEXITCODE -ne 0) { throw "Saved asset reload verification failed: $OutputDirectory" }
     }
     Write-Output "Blueprint Assist complete. Saved=$($result.saved). Evidence: $OutputDirectory"

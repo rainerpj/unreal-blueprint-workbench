@@ -1,12 +1,12 @@
 # Blueprint Workbench 维护交接
 
-## 2026-11-27 本地 Schema／UMG 扩展（未发布）
+## 2026-11-27 Schema／UMG 扩展（源码更新，未打包发布）
 
 用户为 FourthGuesthouse COLLECTION-01 明确授权扩展工具。全局核心源码新增 CreateSchemaAsset（新 enum／struct，空目标预览）、Widget Blueprint 创建、add_widget／set_widget_property、variable_metadata、set_delegate_function，以及 CreateWidget／GameInstanceSubsystem／FormatText／ParentCall／void Return 节点。没有游戏类型进入通用插件。实现分布于 BlueprintWorkbenchLibrary.cpp/.h 和 WorkbenchSchemaAssets.inl，格式与边界见 PATCH_FORMAT.md 的本地扩展章节。
 
 原类 Self 传入外部 Widget 的精确组件类型会在复制预览中失配，因此增加 ApplyPatchInIsolatedCommandlet：commandlet 源对象内存预览不保存，退出后新进程备份写回，再独立重载。正常复制预览不变。调用者必须编排不同进程并检查预览；不可在同一进程连跑预览和应用，不得与加载相同资产的编辑器并发。
 
-已安装至 FourthGuesthouse 项目 Plugins/BlueprintWorkbench，UE 5.5.4 Editor 构建通过；Scripts/TestSchemaWidgetAssets.py 的 15 项瞬态正／反例通过，退出 0。实际 Blueprint 资产11个编译／后台 BA 语义验证／独立重载均0错误0警告；基本 PIE／重启／恢复通过。证据位于该项目 Saved/BlueprintWorkbench/Collection01/。未执行 UE5.7 构建、发布打包或干净机器验收；既有0.5.0附件不含此次扩展。保留已有 Invoke-Assist.ps1 修改，未提交／推送。
+已安装至 FourthGuesthouse 项目 Plugins/BlueprintWorkbench，UE 5.5.4 Editor 构建通过；Scripts/TestSchemaWidgetAssets.py 的 15 项瞬态正／反例通过，退出 0。实际 Blueprint 资产11个编译／后台 BA 语义验证／独立重载均0错误0警告；基本 PIE／重启／恢复通过。证据位于该项目 Saved/BlueprintWorkbench/Collection01/。未执行 UE5.7 构建、发布打包或干净机器验收；既有0.5.0附件不含此次扩展。Schema／UMG 扩展已提交为 cec2252。本次按用户要求推送源码，并纳入 Invoke-Assist.ps1 的 FinalizeAssist.py 路径分隔符规范化修复；既有 Release 附件不变。
 
 自审已核对新资产拒绝覆盖、字段默认校验、UMG 单子项／重复名／属性可编辑限制、引擎原生节点与元数据、预览不保存和写回备份边界。通用创建、编辑和安全编排复用既有实现；不新增玩法运行模块或替代 BA 排版器。
 
@@ -48,3 +48,7 @@ UE5.5.4／5.7.4 的Win64预编译包分别通过UAT BuildPlugin，并从ZIP安�
 - 提交前本机运行 CI 对应49项 Python 测试以及分发安装契约检查，全部通过。远端 Actions 状态需按提交单独核对。
 - [兼容矩阵](../Plugins/BlueprintWorkbench/Docs/COMPATIBILITY.md) 与 [精简验证摘要](../Plugins/BlueprintWorkbench/Docs/validation/2026-11-25-vector-fix-summary.json) 保留公开证据；完整日志、备份、历史交接和游戏资产仅存本地。
 - 未验收所有类型组合、原生UI／PIE／设备／游戏打包。安装器拒绝覆盖已有插件；定制宿主须先审阅差异，并用匹配引擎重新编译，不能混用DLL。
+
+## 2026-11-27 源码推送检查
+
+本次推送前重新运行 CI 对应的 53 项 Python 单元测试、核心分发检查和 5 项桥接安装契约，全部通过；Invoke-Assist.ps1 的 PowerShell 语法解析及 git diff --check 通过。本次未重跑引擎构建、PIE 或打包；上文引擎验证为此前记录。
