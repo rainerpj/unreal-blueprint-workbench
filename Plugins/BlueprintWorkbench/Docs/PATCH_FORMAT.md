@@ -54,7 +54,23 @@
 
 ## 不提供的能力
 
-不包含 定制宿主 hud_buttons、StageB 批处理或游戏类型。Widget Designer 控件树、Binding、动画可检查／复制，不提供通用编辑。Material、Niagara、Anim Blueprint、宏库的图修改暂不支持；不支持任意节点强制删除。函数库支持函数图；接口仅支持签名、参数和函数元数据，不允许实现逻辑。
+不包含 定制宿主 hud_buttons、StageB 批处理或游戏类型。Widget Designer 仅提供下述控件添加与属性编辑，不提供 Binding／动画的通用编辑。Material、Niagara、Anim Blueprint、宏库的图修改暂不支持；不支持任意节点强制删除。函数库支持函数图；接口仅支持签名、参数和函数元数据，不允许实现逻辑。
+
+## 2026-11-27 本地扩展（尚未发布）
+
+仅在 UE 5.5.4 项目构建及实际资产上验证；不属于已有 0.5.0 二进制包，未验证 UE 5.7。
+
+- `CreateBlueprint` 新增 `kind="widget"`，父类默认 UserWidget。
+- `CreateSchemaAsset(kind, schema_json, destination_package="")` 创建新 enum／struct；空目标只在临时包预览，有目标只允许不存在的 `/Game/` 包，不改已有枚举／结构。enum 使用 `{"values":["Item","Document"]}`；struct 使用 `{"fields":[{"name":"Id","type":"name"},{"name":"Number","type":"int","default":"1"}]}`，类型沿用统一类型，可带 tooltip。返回 `members` 的 name 是实际内部字段／枚举名，display 是显示名。调用方先预览，再指定目标保存，保存后独立进程加载验证。
+- `add_widget`：name、class、可选 parent；无 parent 建根，已有根拒绝；parent 必须是可容纳子项的 PanelWidget。重复名称、抽象类、不存在的父控件、占用的单子项容器拒绝。新增控件标记为变量。
+- `set_widget_property`：name、property、字符串 value、可选 bool slot；只允许反射中的可编辑非 EditConst 属性，以 UE 属性文本导入。slot=true 编辑所属 Slot。
+- `variable_metadata`：name、可选 tooltip、expose_on_spawn、private。后两者为 bool；private 使用 UE 的 BlueprintPrivate 元数据。
+- `set_delegate_function`：graph、node、function；在 CreateDelegate 对象和委托上下文连好后设置函数，避免连接时引擎清空此前选择。
+- `add_node` 新增 `create_widget`（owner 为具体 Widget 类）、`get_subsystem`（owner 为 GameInstanceSubsystem 子类）、`format_text`（text 字符串）、`parent_call`（function 为父函数名）。`return` 也允许在 void 函数中创建早退节点，不允许事件图。
+
+### 保持 Self 类身份的隔离预览
+
+普通复制预览中，Self 属于复制类；当外部 Widget 的 ExposeOnSpawn 属性精确引用原组件类时，合法的 Self 连线也可能被复制类身份拒绝。此时才使用 `ApplyPatchInIsolatedCommandlet(asset, patch, bWriteBack=false)`：仅 commandlet，直接修改已加载源对象的**内存**，不保存磁盘。必须退出该进程后，在新 commandlet 中对同一源和补丁调用 bWriteBack=true；该写回先备份、编辑、编译成功后保存，再另启进程重载检查。不要在同一进程先预览后重复应用，也不要让外部编辑器同时加载目标资产。写回入口不自动运行另一次预览；编排方负责保存并检查先前预览报告与源未被其他写入者修改的条件。失败进程不得再保存源。普通 ApplyPatch／ApplyPatchToSavedAsset 合同不变。
 
 工具只保证它报告的编辑／编译／保存结果。玩法语义、视觉布局、PIE、设备和正式项目迁移需另外验证。
 

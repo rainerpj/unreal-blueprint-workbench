@@ -60,6 +60,21 @@
 #include "UObject/UnrealType.h"
 #include "WidgetBlueprint.h"
 #include "Blueprint/WidgetTree.h"
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetBlueprintGeneratedClass.h"
+#include "Components/PanelWidget.h"
+#include "Components/PanelSlot.h"
+#include "Kismet2/EnumEditorUtils.h"
+#include "Kismet2/StructureEditorUtils.h"
+#include "Engine/UserDefinedEnum.h"
+#include "Engine/UserDefinedStruct.h"
+#include "UserDefinedStructure/UserDefinedStructEditorData.h"
+#include "K2Node_ConstructObjectFromClass.h"
+#include "K2Node_GetSubsystem.h"
+#include "Subsystems/GameInstanceSubsystem.h"
+#include "K2Node_FormatText.h"
+#include "K2Node_CallParentFunction.h"
+#include "Blueprint/WidgetTree.h"
 #include "Components/Widget.h"
 #include "Animation/WidgetAnimation.h"
 
@@ -650,11 +665,47 @@ struct FPatch
         {
             UK2Node_FunctionResult* Original = nullptr;
             for (UEdGraphNode* N : TargetGraph->Nodes) if (auto* R = Cast<UK2Node_FunctionResult>(N)) { Original = R; break; }
-            if (!Original) return Reject(TEXT("Function has no return signature"));
-            Added = DuplicateObject<UK2Node_FunctionResult>(Original, TargetGraph);
-            Added->CreateNewGuid();
-            for (auto* P : Added->Pins) P->LinkedTo.Empty();
-            TargetGraph->AddNode(Added, false, false);
+            if (!Original)
+            {
+                UK2Node_FunctionEntry* Entry=nullptr;
+                for (UEdGraphNode* N:TargetGraph->Nodes) if (auto* E=Cast<UK2Node_FunctionEntry>(N)) Entry=E;
+                if (!Entry || !Blueprint->FunctionGraphs.Contains(TargetGraph)) return Reject(TEXT("Return requires a function graph"));
+                Added=Create<UK2Node_FunctionResult>(TargetGraph,[Entry](auto* N){N->FunctionReference=Entry->FunctionReference;});
+            }
+            else
+            {
+                Added = DuplicateObject<UK2Node_FunctionResult>(Original, TargetGraph);
+                Added->CreateNewGuid();
+                for (auto* P : Added->Pins) P->LinkedTo.Empty();
+                TargetGraph->AddNode(Added, false, false);
+            }
+        }
+        else if (Kind == TEXT("parent_call"))
+        {
+            UFunction* Function=Blueprint->ParentClass->FindFunctionByName(FName(*String(Op,TEXT("function"))));
+            if (!Function) return Reject(TEXT("Parent function missing"));
+            Added=Create<UK2Node_CallParentFunction>(TargetGraph,[Function](auto* N){N->SetFromFunction(Function);});
+        }
+        else if (Kind == TEXT("get_subsystem"))
+        {
+            UClass* Class=LoadObject<UClass>(nullptr,*String(Op,TEXT("owner")));
+            if (!Class || !Class->IsChildOf(UGameInstanceSubsystem::StaticClass())) return Reject(TEXT("GameInstance subsystem class required"));
+            Added=Create<UK2Node_GetSubsystem>(TargetGraph,[Class](auto* N){N->Initialize(Class);});
+        }
+        else if (Kind == TEXT("format_text"))
+        {
+            auto* N=CastChecked<UK2Node_FormatText>(Create<UK2Node_FormatText>(TargetGraph,[](auto*){}));
+            GetDefault<UEdGraphSchema_K2>()->TrySetDefaultText(*N->GetFormatPin(),FText::FromString(String(Op,TEXT("text")))); Added=N;
+        }
+        else if (Kind == TEXT("create_widget"))
+        {
+            UClass* Class=LoadObject<UClass>(nullptr,*String(Op,TEXT("owner")));
+            if (!Class || !Class->IsChildOf(UUserWidget::StaticClass())) return Reject(TEXT("Widget class required"));
+            UClass* NodeClass=LoadObject<UClass>(nullptr,TEXT("/Script/UMGEditor.K2Node_CreateWidget"));
+            if (!NodeClass || !NodeClass->IsChildOf(UK2Node_ConstructObjectFromClass::StaticClass())) return Reject(TEXT("CreateWidget node unavailable"));
+            auto* N=NewObject<UK2Node_ConstructObjectFromClass>(TargetGraph,NodeClass); TargetGraph->AddNode(N,false,false); N->CreateNewGuid(); N->PostPlacedNewNode(); N->AllocateDefaultPins();
+            GetDefault<UEdGraphSchema_K2>()->TrySetDefaultObject(*N->GetClassPin(),Class);
+            N->ReconstructNode(); Added=N;
         }
         else if (Kind == TEXT("self")) Added = Create<UK2Node_Self>(TargetGraph, [](auto*) {});
         else if (Kind == TEXT("cast"))
@@ -836,6 +887,43 @@ struct FPatch
         return true;
     }
 
+    bool WidgetEdit(const FObject& Op)
+    {
+        auto* BP = Cast<UWidgetBlueprint>(Blueprint);
+        if (!BP || !BP->WidgetTree) return Reject(TEXT("Widget Blueprint required"));
+        const FString Kind = String(Op, TEXT("op"));
+        const FName Name(*String(Op, TEXT("name")));
+        if (Kind == TEXT("add_widget"))
+        {
+            UClass* Class = LoadObject<UClass>(nullptr, *String(Op,TEXT("class")));
+            if (Name.IsNone() || BP->WidgetTree->FindWidget(Name) || !Class || !Class->IsChildOf(UWidget::StaticClass()) || Class->HasAnyClassFlags(CLASS_Abstract)) return Reject(TEXT("Invalid or duplicate widget"));
+            UPanelWidget* Parent = nullptr;
+            if (Op->HasField(TEXT("parent")))
+            {
+                Parent = Cast<UPanelWidget>(BP->WidgetTree->FindWidget(FName(*String(Op,TEXT("parent")))));
+                if (!Parent || (!Parent->CanHaveMultipleChildren() && Parent->GetChildrenCount())) return Reject(TEXT("Parent missing or single-child container occupied"));
+            }
+            else if (BP->WidgetTree->RootWidget) return Reject(TEXT("Root already exists"));
+            UWidget* Widget = BP->WidgetTree->ConstructWidget<UWidget>(Class, Name);
+            Widget->bIsVariable = true;
+            if (Parent) { if (!Parent->AddChild(Widget)) return Reject(TEXT("Could not attach widget")); }
+            else BP->WidgetTree->RootWidget = Widget;
+        }
+        else
+        {
+            UWidget* Widget = BP->WidgetTree->FindWidget(Name);
+            UObject* Target = Widget;
+            bool Slot = false; Op->TryGetBoolField(TEXT("slot"), Slot);
+            if (Slot) Target = Widget ? Widget->Slot : nullptr;
+            FProperty* Property = Target ? FindFProperty<FProperty>(Target->GetClass(), FName(*String(Op,TEXT("property")))) : nullptr;
+            if (!Property || !Property->HasAnyPropertyFlags(CPF_Edit) || Property->HasAnyPropertyFlags(CPF_EditConst)) return Reject(TEXT("Editable widget property not found"));
+            const FString Value=String(Op,TEXT("value"));
+            if (!Property->ImportText_Direct(*Value, Property->ContainerPtrToValuePtr<void>(Target), Target, PPF_None)) return Reject(TEXT("Invalid widget property value"));
+        }
+        FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+        return true;
+    }
+
     bool Apply(const FObject& Op)
     {
         const FString Kind = String(Op, TEXT("op"));
@@ -843,7 +931,11 @@ struct FPatch
             return Reject(TEXT("Interfaces permit only signature, function metadata and parameter edits"));
         // Catch misspelled/unsupported fields rather than silently applying a different patch.
         TArray<FString> Fields;
-        if (Kind == TEXT("signature")) Fields = {TEXT("op"), TEXT("name"), TEXT("parameters"), TEXT("entry_id"), TEXT("result_id")};
+        if (Kind == TEXT("set_delegate_function")) Fields = {TEXT("op"),TEXT("graph"),TEXT("node"),TEXT("function")};
+        else if (Kind == TEXT("add_widget")) Fields = {TEXT("op"),TEXT("name"),TEXT("class"),TEXT("parent")};
+        else if (Kind == TEXT("set_widget_property")) Fields = {TEXT("op"),TEXT("name"),TEXT("property"),TEXT("value"),TEXT("slot")};
+        else if (Kind == TEXT("variable_metadata")) Fields = {TEXT("op"),TEXT("name"),TEXT("tooltip"),TEXT("expose_on_spawn"),TEXT("private")};
+        else if (Kind == TEXT("signature")) Fields = {TEXT("op"), TEXT("name"), TEXT("parameters"), TEXT("entry_id"), TEXT("result_id")};
         else if (Kind == TEXT("function_properties")) Fields = {TEXT("op"), TEXT("graph"), TEXT("pure"), TEXT("access"), TEXT("category"), TEXT("tooltip")};
         else if (Kind == TEXT("set_member_default")) Fields = {TEXT("op"), TEXT("variable"), TEXT("value")};
         else if (Kind == TEXT("add_dispatcher")) Fields = {TEXT("op"), TEXT("name"), TEXT("parameters")};
@@ -867,6 +959,22 @@ struct FPatch
         else return Reject(TEXT("Unsupported operation: ") + Kind);
         for (const auto& Field : Op->Values)
             if (!Fields.Contains(Field.Key)) return Reject(TEXT("Unsupported field: ") + Field.Key);
+        if (Kind == TEXT("set_delegate_function"))
+        {
+            UEdGraph* G=Graph(String(Op,TEXT("graph"))); if (!G) return false;
+            auto* N=Cast<UK2Node_CreateDelegate>(ResolveNode(G,String(Op,TEXT("node"))));
+            if (!N) return Reject(TEXT("CreateDelegate node required")); N->SetFunction(FName(*String(Op,TEXT("function")))); return true;
+        }
+        if (Kind == TEXT("add_widget") || Kind == TEXT("set_widget_property")) return WidgetEdit(Op);
+        if (Kind == TEXT("variable_metadata"))
+        {
+            const FName Name(*String(Op,TEXT("name")));
+            if (FBlueprintEditorUtils::FindNewVariableIndex(Blueprint,Name)==INDEX_NONE) return Reject(TEXT("Owned variable not found"));
+            if (Op->HasField(TEXT("private"))) { FBlueprintEditorUtils::RemoveBlueprintVariableMetaData(Blueprint,Name,nullptr,TEXT("Private")); if (Op->GetBoolField(TEXT("private"))) FBlueprintEditorUtils::SetBlueprintVariableMetaData(Blueprint,Name,nullptr,FBlueprintMetadata::MD_Private,TEXT("true")); else FBlueprintEditorUtils::RemoveBlueprintVariableMetaData(Blueprint,Name,nullptr,FBlueprintMetadata::MD_Private); }
+            if (Op->HasField(TEXT("tooltip"))) FBlueprintEditorUtils::SetBlueprintVariableMetaData(Blueprint,Name,nullptr,TEXT("tooltip"),String(Op,TEXT("tooltip")));
+            if (Op->HasField(TEXT("expose_on_spawn"))) FBlueprintEditorUtils::SetBlueprintVariableMetaData(Blueprint,Name,nullptr,TEXT("ExposeOnSpawn"),Op->GetBoolField(TEXT("expose_on_spawn")) ? TEXT("true") : TEXT("false"));
+            return true;
+        }
         if (Kind == TEXT("function_properties")) return FunctionProperties(Op);
         if (Kind == TEXT("set_member_default")) return MemberDefault(Op);
         if (Kind == TEXT("add_dispatcher")) return Dispatcher(Op);
@@ -1065,7 +1173,7 @@ FString UBlueprintWorkbenchLibrary::InspectBlueprint(const FString& AssetPath)
     return Json(Out);
 }
 
-static FString ApplyPatchInternal(const FString& AssetPath, const FString& PatchJson, const FString& DestinationPackage, bool bWriteSource)
+static FString ApplyPatchInternal(const FString& AssetPath, const FString& PatchJson, const FString& DestinationPackage, bool bWriteSource, bool bPreviewSource = false)
 {
     using namespace BlueprintWorkbench;
     FObject Out = Result();
@@ -1081,6 +1189,8 @@ static FString ApplyPatchInternal(const FString& AssetPath, const FString& Patch
     // UMG graph edits use the registered Widget compiler; Designer mutation remains out of scope.
     if ((Source->GetClass() != UBlueprint::StaticClass() && Source->GetClass() != UWidgetBlueprint::StaticClass()) || (Source->BlueprintType != BPTYPE_Normal && Source->BlueprintType != BPTYPE_FunctionLibrary && Source->BlueprintType != BPTYPE_Interface))
         return Fail(Out, TEXT("Supported assets: normal Blueprint, Widget, function library and interface"));
+    const bool bUseSource = bWriteSource || bPreviewSource;
+    if (bPreviewSource && (!IsRunningCommandlet() || !Source->GetOutermost()->GetName().StartsWith(TEXT("/Game/")))) return Fail(Out,TEXT("Identity preview requires an isolated commandlet and /Game asset"));
     const bool bSaveCopy = !DestinationPackage.IsEmpty();
     const bool bSave = bWriteSource || bSaveCopy;
     if (bSaveCopy && (!DestinationPackage.StartsWith(TEXT("/Game/")) || !FPackageName::IsValidLongPackageName(DestinationPackage)))
@@ -1104,16 +1214,16 @@ static FString ApplyPatchInternal(const FString& AssetPath, const FString& Patch
             return Fail(Out, TEXT("Could not back up source; nothing edited"));
         Out->SetStringField(TEXT("backup_file"), BackupFilename);
     }
-    const FString PackageName = bWriteSource ? Source->GetOutermost()->GetName() :
+    const FString PackageName = bUseSource ? Source->GetOutermost()->GetName() :
         (bSaveCopy ? DestinationPackage : TEXT("/Temp/BlueprintWorkbench_") + FGuid::NewGuid().ToString(EGuidFormats::Digits));
-    UPackage* Package = bWriteSource ? Source->GetOutermost() : CreatePackage(*PackageName);
+    UPackage* Package = bUseSource ? Source->GetOutermost() : CreatePackage(*PackageName);
     TStrongObjectPtr<UPackage> KeepPackage(Package);
-    if (!bSave) Package->SetFlags(RF_Transient);
+    if (!bSave && !bUseSource) Package->SetFlags(RF_Transient);
     TMap<UObject*, UObject*> DuplicatedObjects;
     FObjectDuplicationParameters Duplication(Source, Package);
     Duplication.DestName = FName(*FPackageName::GetLongPackageAssetName(PackageName));
     Duplication.CreatedObjects = &DuplicatedObjects;
-    UBlueprint* Copy = bWriteSource ? Source : Cast<UBlueprint>(StaticDuplicateObjectEx(Duplication));
+    UBlueprint* Copy = bUseSource ? Source : Cast<UBlueprint>(StaticDuplicateObjectEx(Duplication));
     if (!Copy) return Fail(Out, TEXT("Blueprint duplication failed"));
     TStrongObjectPtr<UBlueprint> KeepCopy(Copy);
     Copy->SetFlags(RF_Public | RF_Standalone);
@@ -1206,7 +1316,7 @@ static FString ApplyPatchInternal(const FString& AssetPath, const FString& Patch
         }
         else Out->SetStringField(TEXT("error"), TEXT("Patched copy did not compile; nothing saved"));
     }
-    if (!bWriteSource && (!bSave || !Out->GetBoolField(TEXT("saved"))))
+    if (!bUseSource && (!bSave || !Out->GetBoolField(TEXT("saved"))))
     {
         // Failed/preview copies must not appear in Save All. No source package is changed or saved.
         Copy->ClearFlags(RF_Public | RF_Standalone);
@@ -1245,13 +1355,14 @@ FString UBlueprintWorkbenchLibrary::CreateBlueprint(const FString& Kind, const F
     UClass* Parent = nullptr;
     if (Kind == TEXT("function_library")) { Type = BPTYPE_FunctionLibrary; Parent = UBlueprintFunctionLibrary::StaticClass(); }
     else if (Kind == TEXT("interface")) { Type = BPTYPE_Interface; Parent = UInterface::StaticClass(); }
+    else if (Kind == TEXT("widget")) Parent = UUserWidget::StaticClass();
     else if (Kind == TEXT("normal")) Parent = LoadObject<UClass>(nullptr, *ParentClass);
     else return Fail(Result(), TEXT("kind must be normal, function_library or interface"));
     if (!Parent || (Type == BPTYPE_Normal && !FKismetEditorUtilities::CanCreateBlueprintOfClass(Parent))) return Fail(Result(), TEXT("Invalid Blueprint parent"));
     const FString SeedName = TEXT("/Temp/WorkbenchSeed_") + FGuid::NewGuid().ToString(EGuidFormats::Digits);
     UPackage* Package = CreatePackage(*SeedName);
     Package->SetFlags(RF_Transient);
-    TStrongObjectPtr<UBlueprint> Seed(FKismetEditorUtilities::CreateBlueprint(Parent, Package, *FPackageName::GetLongPackageAssetName(SeedName), Type));
+    TStrongObjectPtr<UBlueprint> Seed(FKismetEditorUtilities::CreateBlueprint(Parent, Package, *FPackageName::GetLongPackageAssetName(SeedName), Type, Kind == TEXT("widget") ? UWidgetBlueprint::StaticClass() : UBlueprint::StaticClass(), Kind == TEXT("widget") ? UWidgetBlueprintGeneratedClass::StaticClass() : UBlueprintGeneratedClass::StaticClass()));
     if (!Seed.IsValid()) return Fail(Result(), TEXT("Could not create Blueprint"));
     const FString ResultJson = ApplyPatchInternal(Seed->GetPathName(), PatchJson, DestinationPackage, false);
     Seed->ClearFlags(RF_Public | RF_Standalone); Package->SetDirtyFlag(false);
@@ -1292,4 +1403,14 @@ FString UBlueprintWorkbenchLibrary::FindMemberReferences(const FString& AssetPat
     Out->SetArrayField(TEXT("candidate_packages"), Candidates); Out->SetArrayField(TEXT("references"), References);
     Out->SetStringField(TEXT("scope"), TEXT("Saved asset-registry package referencers and direct function/variable K2 references; excludes unsaved editors, soft-name references and non-Blueprint assets"));
     Out->SetBoolField(TEXT("success"), true); return Json(Out);
+}
+
+#include "WorkbenchSchemaAssets.inl"
+
+
+FString UBlueprintWorkbenchLibrary::ApplyPatchInIsolatedCommandlet(const FString& AssetPath, const FString& PatchJson, bool bWriteBack)
+{
+    using namespace BlueprintWorkbench;
+    if (!IsRunningCommandlet()) return Fail(Result(),TEXT("Isolated commandlet required; close editor first"));
+    return ApplyPatchInternal(AssetPath,PatchJson,TEXT(""),bWriteBack,!bWriteBack);
 }

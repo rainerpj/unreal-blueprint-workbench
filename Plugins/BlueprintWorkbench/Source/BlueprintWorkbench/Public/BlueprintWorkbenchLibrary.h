@@ -10,6 +10,14 @@ class BLUEPRINTWORKBENCH_API UBlueprintWorkbenchLibrary : public UBlueprintFunct
 {
     GENERATED_BODY()
 public:
+    /** Isolated commandlet only: preserve original class identity in memory. Preview never saves; caller must exit the process before writeback. */
+    UFUNCTION(BlueprintCallable, Category="Blueprint Workbench")
+    static FString ApplyPatchInIsolatedCommandlet(const FString& AssetPath, const FString& PatchJson, bool bWriteBack = false);
+
+    /** Create a new enum or struct from an explicit schema; empty destination previews only. */
+    UFUNCTION(BlueprintCallable, Category="Blueprint Workbench")
+    static FString CreateSchemaAsset(const FString& Kind, const FString& SchemaJson, const FString& DestinationPackage = TEXT(""));
+
     /** Create a normal Blueprint, function library or interface; empty destination previews, existing packages are refused. */
     UFUNCTION(BlueprintCallable, Category="Blueprint Workbench")
     static FString CreateBlueprint(const FString& Kind, const FString& ParentClass, const FString& PatchJson, const FString& DestinationPackage = TEXT(""));

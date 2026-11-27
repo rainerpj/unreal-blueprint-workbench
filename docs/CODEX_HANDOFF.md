@@ -1,5 +1,15 @@
 # Blueprint Workbench 维护交接
 
+## 2026-11-27 本地 Schema／UMG 扩展（未发布）
+
+用户为 FourthGuesthouse COLLECTION-01 明确授权扩展工具。全局核心源码新增 CreateSchemaAsset（新 enum／struct，空目标预览）、Widget Blueprint 创建、add_widget／set_widget_property、variable_metadata、set_delegate_function，以及 CreateWidget／GameInstanceSubsystem／FormatText／ParentCall／void Return 节点。没有游戏类型进入通用插件。实现分布于 BlueprintWorkbenchLibrary.cpp/.h 和 WorkbenchSchemaAssets.inl，格式与边界见 PATCH_FORMAT.md 的本地扩展章节。
+
+原类 Self 传入外部 Widget 的精确组件类型会在复制预览中失配，因此增加 ApplyPatchInIsolatedCommandlet：commandlet 源对象内存预览不保存，退出后新进程备份写回，再独立重载。正常复制预览不变。调用者必须编排不同进程并检查预览；不可在同一进程连跑预览和应用，不得与加载相同资产的编辑器并发。
+
+已安装至 FourthGuesthouse 项目 Plugins/BlueprintWorkbench，UE 5.5.4 Editor 构建通过；Scripts/TestSchemaWidgetAssets.py 的 15 项瞬态正／反例通过，退出 0。实际 Blueprint 资产11个编译／后台 BA 语义验证／独立重载均0错误0警告；基本 PIE／重启／恢复通过。证据位于该项目 Saved/BlueprintWorkbench/Collection01/。未执行 UE5.7 构建、发布打包或干净机器验收；既有0.5.0附件不含此次扩展。保留已有 Invoke-Assist.ps1 修改，未提交／推送。
+
+自审已核对新资产拒绝覆盖、字段默认校验、UMG 单子项／重复名／属性可编辑限制、引擎原生节点与元数据、预览不保存和写回备份边界。通用创建、编辑和安全编排复用既有实现；不新增玩法运行模块或替代 BA 排版器。
+
 更新：2026-11-25。维护仓库为 rainerpj/unreal-blueprint-workbench；当前版本为0.5.0，新增功能及UE5.5／5.7预编译分发的验证范围见兼容矩阵；旧0.4.1附件不包含本轮新增能力。
 
 ## 0.5.0 桥接补充分发

@@ -21,6 +21,8 @@
 
 ## 定制宿主 迁移边界
 
+2026-11-27 本地新增：`WorkbenchSchemaAssets.inl` 负责只新建 enum／struct；`FPatch::WidgetEdit` 负责 UMG 控件与可编辑属性，仍走原预览／编译／保存管线。新增原生 K2 节点不引入游戏运行依赖。`ApplyPatchInIsolatedCommandlet` 仅解决复制 Self 类身份问题，必须由调用方编排隔离内存预览、退出、另进程备份写回和独立重载，不能用于交互编辑器。完整接口及边界见 PATCH_FORMAT.md，瞬态夹具为 Scripts/TestSchemaWidgetAssets.py；目前只验证 UE5.5.4，尚未发布。
+
 提取时 定制宿主 工程已有未提交的插件扩展及玩法资产修改。原 `<Project>/Plugins/BlueprintWorkbench` 和 `Tools/BlueprintWorkbench` 保留，继续由项目维护；不覆盖源插件、不重跑玩法写回。StageB、定制宿主 类型测试、固定 HUD 构造操作不进入通用包；通用 add_component 保留引擎组件默认配置，不附加项目碰撞预设。
 
 这意味着 定制宿主 目前仍使用原项目版本，尚未迁移到通用 0.4.0；不能把提取包当作已替换现有调用。后续迁移需先把项目专用 HUD 操作移到项目编辑器脚本／模块，审阅后再替换插件。其他项目可直接安装通用包。保持同名反射类是为了 API 连续性，一个项目不可同时加载两个同名插件版本。
